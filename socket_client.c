@@ -2,6 +2,8 @@
  *    socket_client ip_server port
  */
 
+
+ // ---------------- 1. pour l'instant le client envoie au server tout ce qu'on écrit dans son terminal
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
