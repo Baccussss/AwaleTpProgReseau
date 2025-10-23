@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "cwd": "/home/ygallard/Bureau/Home_INSA/IF4/Prog_Reseaux/TP2-3-4_Awale/AwaleTpProgReseau",
+      "program": "/home/ygallard/Bureau/Home_INSA/IF4/Prog_Reseaux/TP2-3-4_Awale/AwaleTpProgReseau/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

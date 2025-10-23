@@ -38,24 +38,48 @@ int main(int argc, char** argv )
   if (bind(sockfd,(struct sockaddr*)&serv_addr,sizeof(serv_addr))<0)
      {printf ("impossible de faire le bind\n");exit(0);}
 
+  // ---------------- 0: Met le socket en écoute (max 5 client dans file d'attente)
   /* petit initialisation */
   listen(sockfd,5);
      
   /* attend la connection d'un client */
   clilen = sizeof (cli_addr);
   
-  signal(SIGCHLD,SIG_IGN);
+  signal(SIGCHLD,SIG_IGN); //signal de tuer les processus zombies
   int pid;
+
+  /* ---------------- 1: Boucle d'acceptation
+  accept permet d'attendre l'arrivé d'un client
+  à l'accept l'addresse client est rempli (cli_addr) et son IP est affiché avec inet_ntoa(cli_addr.sin_addr)
+
+  */
   while (1)
 	{
-	 	newsockfd = accept (sockfd,(struct sockaddr*) &cli_addr, &clilen);
-		if (newsockfd<0) {printf ("accept error\n"); exit(0);}
+	 	newsockfd = accept (sockfd,(struct sockaddr*) &cli_addr, &clilen); 
+		if (newsockfd<0) 
+      {printf ("accept error\n"); exit(0);}
 		printf ("connection accepted from [%s]\n", inet_ntoa(cli_addr.sin_addr));
+
+    /* ------------- 2: Boucle d'acceptation
+      fork() crée un processus fils pour gérer ce client.
+      Fils:
+        Ferme le socket d’écoute (sockfd), garde newsockfd.
+        Boucle de lecture caractère par caractère:      //on affiche dans le terminal tout ce qu'on recoit
+          read(newsockfd, &c, 1) jusqu’à lire exactement 1 octet.
+          Si c == '\n': 
+            affiche “ [IP]\n”.
+          Sinon: 
+            affiche le caractère tel quel.
+        À la fin prévue, il ferme newsockfd et exit(0).
+      Père:
+        Ferme newsockfd (le socket de la session).
+        Retourne dans accept() pour prendre d’autres clients en parallèle.
+    */
 		pid = fork();
 		if (pid == 0) /* c’est le fils */
 		{
 			close(sockfd); /* socket inutile pour le fils */
-			while(1) {
+			while(1) {  
 				while (read(newsockfd,&c,1)!=1);
 			 	if (c == '\n') {
 			 		printf(" [%s]\n", inet_ntoa(cli_addr.sin_addr));
