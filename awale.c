@@ -1,5 +1,6 @@
 #include "awale.h"
 #include <stdio.h>
+#include <string.h>
 
 void awale_init(Awale *g)
 {
@@ -105,4 +106,59 @@ bool awale_move(Awale *g, int house_index)
     // next player's turn only if move wasn't starve opponent? For simplicity, always switch.
     g->current_player = 1 - g->current_player;
     return true;
+}
+
+void afficher_interface_jeu(char *out, size_t out_sz,
+                            const int board[12], const int scores[2],
+                            int current_player, int current_POV)
+{
+    int top[6], bottom[6];
+    int top_player, bottom_player;
+
+    if (current_POV == 0)
+    {
+        for (int i = 0; i < 6; ++i)
+        {
+            bottom[i] = board[i];   // 0..5
+            top[i] = board[11 - i]; // 11..6
+        }
+        bottom_player = 1;
+        top_player = 2;
+    }
+    else
+    {
+        for (int i = 0; i < 6; ++i)
+        {
+            bottom[i] = board[6 + i]; // 6..11
+            top[i] = board[5 - i];    // 5..0
+        }
+        bottom_player = 2;
+        top_player = 1;
+    }
+
+    char msg[160];
+    if (current_player == current_POV)
+    {
+        snprintf(msg, sizeof(msg),
+                 "À vous de jouer (J%d) — Choisissez une maison (0-5) puis Entrée\n",
+                 current_POV + 1);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg),
+                 "En attente du coup adverse de J%d...\n",
+                 current_player + 1);
+    }
+
+    snprintf(out, out_sz,
+             "\n========== PLATEAU D'AWALE ==========\n\n"
+             " ___ ___ ___ ___ ___ ___ \n"
+             "|%2d |%2d |%2d |%2d |%2d |%2d |  [Joueur %d]\n"
+             "|___|___|___|___|___|___|  [Score: %d]\n"
+             "|%2d |%2d |%2d |%2d |%2d |%2d |  [Joueur %d]\n"
+             "|___|___|___|___|___|___|  [Score: %d]\n\n"
+             "%s",
+             top[0], top[1], top[2], top[3], top[4], top[5], top_player, scores[top_player - 1],
+             bottom[0], bottom[1], bottom[2], bottom[3], bottom[4], bottom[5], bottom_player, scores[bottom_player - 1],
+             msg);
 }

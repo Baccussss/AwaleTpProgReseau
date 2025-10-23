@@ -1,4 +1,3 @@
-// server_awale.c
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -9,18 +8,34 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 
-#include "awale.h" // <-- tes fonctions awale_*
+#include "awale.h" // Awale + afficher_interface_jeu
 
 #define BACKLOG 5
 
-static void send_str(int fd, const char *s)
+// Envoi robuste: s'assure que tout le buffer part
+static int send_all(int fd, const char *buf, size_t len)
 {
-    size_t n = strlen(s);
-    ssize_t w = send(fd, s, n, 0);
-    (void)w;
+    size_t sent = 0;
+    while (sent < len)
+    {
+        ssize_t w = send(fd, buf + sent, len - sent, 0);
+        if (w < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        if (w == 0)
+            return -1;
+        sent += (size_t)w;
+    }
+    return 0;
 }
+static void send_str(int fd, const char *s) { (void)send_all(fd, s, strlen(s)); }
 
+// Lecture d'une ligne terminée par '\n'
 static int recv_line(int fd, char *buf, size_t maxlen)
 {
     size_t i = 0;
@@ -34,55 +49,16 @@ static int recv_line(int fd, char *buf, size_t maxlen)
         {
             if (errno == EINTR)
                 continue;
-            return -1; // erreur
+            return -1;
         }
         if (c == '\r')
-            continue; // ignore CR
+            continue; // ignorer CR
         buf[i++] = c;
         if (c == '\n')
             break;
     }
     buf[i] = '\0';
     return (int)i;
-}
-
-static void board_to_string(const Awale *g, char *out, size_t outsz)
-{
-    // Affichage textuel simple + scores sous chaque camp (comme demandé)
-    // On écrit dans 'out' (pas de printf direct).
-    char line[256];
-    size_t used = 0;
-#define APPEND(fmt, ...)                                          \
-    do                                                            \
-    {                                                             \
-        int n = snprintf(line, sizeof(line), fmt, ##__VA_ARGS__); \
-        if (n < 0)                                                \
-            n = 0;                                                \
-        if (used + (size_t)n < outsz)                             \
-        {                                                         \
-            memcpy(out + used, line, n);                          \
-            used += n;                                            \
-        }                                                         \
-    } while (0)
-
-    APPEND("\n========== PLATEAU D'AWALE ==========\n\n");
-    APPEND("  Camp du Joueur 2 (haut)\n  ");
-    for (int i = HOUSES_PER_SIDE - 1; i >= 0; --i)
-    {
-        APPEND(" [%2d]", g->board[HOUSES_PER_SIDE + i]);
-    }
-    APPEND("\n  Score J2 : %d\n\n", g->score[1]);
-
-    APPEND("  Camp du Joueur 1 (bas)\n  ");
-    for (int i = 0; i < HOUSES_PER_SIDE; ++i)
-    {
-        APPEND(" [%2d]", g->board[i]);
-    }
-    APPEND("\n  Score J1 : %d\n\n", g->score[0]);
-
-    APPEND("  --> Au Joueur %d de jouer <--\n\n", g->current_player + 1);
-    out[used] = '\0';
-#undef APPEND
 }
 
 int main(int argc, char **argv)
@@ -93,6 +69,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    signal(SIGPIPE, SIG_IGN); // éviter un crash si un client coupe pendant send()
+
+    // --- Socket d'écoute ---
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if (listenfd < 0)
     {
@@ -122,20 +101,23 @@ int main(int argc, char **argv)
 
     printf("Serveur Awale: en attente de 2 joueurs sur le port %s...\n", argv[1]);
 
+    // --- Accepter exactement deux joueurs ---
     int players[2] = {-1, -1};
     struct sockaddr_in cli_addr;
-    socklen_t clilen = sizeof(cli_addr);
+    socklen_t clilen;
 
     for (int i = 0; i < 2; ++i)
     {
+        clilen = sizeof(cli_addr);
         players[i] = accept(listenfd, (struct sockaddr *)&cli_addr, &clilen);
         if (players[i] < 0)
         {
             perror("accept");
             return 1;
         }
+
         printf("Joueur %d connecté depuis %s\n", i + 1, inet_ntoa(cli_addr.sin_addr));
-        char hello[128];
+        char hello[160];
         snprintf(hello, sizeof(hello),
                  "Bienvenue ! Vous êtes Joueur %d.\nEn attente de l'autre joueur...\n\n", i + 1);
         send_str(players[i], hello);
@@ -145,56 +127,68 @@ int main(int argc, char **argv)
     send_str(players[0], "Les deux joueurs sont présents. Vous êtes Joueur 1.\n");
     send_str(players[1], "Les deux joueurs sont présents. Vous êtes Joueur 2.\n");
 
+    // --- État de jeu ---
     Awale g;
     awale_init(&g);
 
-    // Envoi du plateau initial
-    char buf[1024];
-    board_to_string(&g, buf, sizeof(buf));
-    send_str(players[0], buf);
-    send_str(players[1], buf);
+    // --- UI initiale POV pour chaque joueur ---
+    char ui0[1024], ui1[1024];
+    afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0); // POV J1
+    afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1); // POV J2
+    send_str(players[0], ui0);
+    send_str(players[1], ui1);
 
+    // --- Boucle de jeu ---
     while (1)
     {
         int p = g.current_player; // 0 -> J1 ; 1 -> J2
         int fd_curr = players[p];
         int fd_wait = players[1 - p];
 
-        // Prompts
-        send_str(fd_curr, "Votre tour. Choisissez une maison (0-5) puis Entrée:\n");
-        send_str(fd_wait, "En attente du coup adverse...\n");
+        // Prompt uniquement au joueur courant
+        send_str(fd_curr, "Entrez un nombre (0-5) puis Entrée:\n");
 
-        // Lire une ligne du joueur courant
+        // Lire la saisie
         char line[128];
         int r = recv_line(fd_curr, line, sizeof(line));
         if (r <= 0)
-        {
+        { // déconnexion ou erreur
             send_str(fd_wait, "L'autre joueur s'est déconnecté. Fin de partie.\n");
             break;
         }
 
-        // Parser
+        // Parser l'entier
         char *endptr = NULL;
         int h = (int)strtol(line, &endptr, 10);
-        if (endptr == line)
+        if (endptr == line || h < 0 || h >= HOUSES_PER_SIDE)
         {
             send_str(fd_curr, "Entrée invalide. Tapez un entier entre 0 et 5.\n");
+            // Réafficher l'UI pour rester synchro
+            afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
+            afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
+            send_str(players[0], ui0);
+            send_str(players[1], ui1);
             continue;
         }
 
-        // Tenter le coup
+        // Tenter le coup (index relatif au joueur courant)
         if (!awale_move(&g, h))
         {
-            send_str(fd_curr, "Coup invalide. Réessayez (0-5, maison non vide, règles OK).\n");
+            send_str(fd_curr, "Coup invalide (maison vide / règle). Réessayez.\n");
+            afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
+            afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
+            send_str(players[0], ui0);
+            send_str(players[1], ui1);
             continue;
         }
 
-        // Diffuser l'état
-        board_to_string(&g, buf, sizeof(buf));
-        send_str(players[0], buf);
-        send_str(players[1], buf);
+        // Coup accepté → diffuser l'état POV aux deux
+        afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
+        afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
+        send_str(players[0], ui0);
+        send_str(players[1], ui1);
 
-        // Détection fin simple (tu peux remplacer par ta version complète)
+        // Fin de partie ? (version simple)
         if (awale_is_game_over(&g))
         {
             char endmsg[256];
@@ -209,6 +203,7 @@ int main(int argc, char **argv)
         }
     }
 
+    // Nettoyage
     close(players[0]);
     close(players[1]);
     close(listenfd);
