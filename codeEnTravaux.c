@@ -61,7 +61,7 @@ char* afficher_interface_jeu(char *out, size_t out_sz,
 
     snprintf(out, out_sz,
         "\n========== PLATEAU D'AWALE ==========\n\n"
-        " ___  ___  ___  ___  ___  ___ \n"
+        " ___ ___ ___ ___ ___ ___ \n"
         "|%2d |%2d |%2d |%2d |%2d |%2d |  [Joueur %d]\n"
         "|___|___|___|___|___|___|  [Score: %d]\n"
         "|%2d |%2d |%2d |%2d |%2d |%2d |  [Joueur %d]\n"
