@@ -2,8 +2,8 @@
  *    socket_client ip_server port
  */
 
-
- // ---------------- 1. pour l'instant le client envoie au server tout ce qu'on écrit dans son terminal
+// ---------------- 0. pour se co au server: compiler le programme et lancer avec ./socket_client AdresseServer PortServer
+// ---------------- 1. pour l'instant le client envoie au server tout ce qu'on écrit dans son terminal
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -44,10 +44,14 @@ int main(int argc, char** argv )
   
   /* repete dans le socket tout ce que l'utilisateur écrit */
   while (1) {
-    c=getchar();write (sockfd,&c,1);
-    if (c=='0') 
-    close( sockfd);
-    break;
+    c=getchar();
+    write (sockfd,&c,1);
+
+    if (c=='0')
+    { 
+      close( sockfd);
+      break;
+    }
   }
   
   
