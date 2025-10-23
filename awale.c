@@ -19,23 +19,31 @@ static int absolute_index(int player, int house)
 
 void awale_print(const Awale *g)
 {
-    // Print board: top row player1 houses (11..6), bottom row player0 houses (0..5)
-    printf("\n    ");
+    printf("\n");
+    printf("          ====== PLATEAU D'AWALE ======\n\n");
+
+    // --- Camp du joueur 2 (haut) ---
+    printf("         Camp du Joueur 2 (haut)\n");
+    printf("        ");
     for (int i = HOUSES_PER_SIDE - 1; i >= 0; --i)
     {
-        printf(" %2d ", g->board[HOUSES_PER_SIDE + i]);
+        printf(" [%2d]", g->board[HOUSES_PER_SIDE + i]);
     }
     printf("\n");
-    printf("%2d ", g->score[1]);
-    for (int i = 0; i < HOUSES_PER_SIDE * 3; ++i)
-        printf(" ");
-    printf(" %2d\n", g->score[0]);
-    printf("    ");
+    printf("                Score J2 : %2d\n\n", g->score[1]);
+
+    // --- Camp du joueur 1 (bas) ---
+    printf("         Camp du Joueur 1 (bas)\n");
+    printf("        ");
     for (int i = 0; i < HOUSES_PER_SIDE; ++i)
     {
-        printf(" %2d ", g->board[i]);
+        printf(" [%2d]", g->board[i]);
     }
-    printf("\n\n");
+    printf("\n");
+    printf("                Score J1 : %2d\n\n", g->score[0]);
+
+    // Indication du joueur courant
+    printf("   --> C'est au Joueur %d de jouer <--\n\n", g->current_player + 1);
 }
 
 bool awale_is_game_over(const Awale *g)
