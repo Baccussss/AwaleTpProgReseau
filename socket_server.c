@@ -12,18 +12,36 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <signal.h>
+#include <signal.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 int main(int argc, char** argv )
 { char datas[] = "hello\n";
   int    sockfd,newsockfd,clilen,chilpid,ok,nleft,nbwriten;
   char c;
   struct sockaddr_in cli_addr,serv_addr;
+  char serverIpAdress[INET_ADDRSTRLEN] = "127.0.0.1";
   
 
   if (argc!=2) {printf ("usage: socket_server port\n");exit(0);}
- 
-  printf ("server starting...\n");  
-  
+
+  // Va chercher l'adresse IP de la machine pour l'afficher
+  struct ifaddrs *ifaddr = NULL, *ifa = NULL;
+  if (getifaddrs(&ifaddr) == 0) {
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+      if (!ifa->ifa_addr) continue;
+      if (ifa->ifa_addr->sa_family == AF_INET && !(ifa->ifa_flags & IFF_LOOPBACK)) {
+        struct sockaddr_in *sa = (struct sockaddr_in*)ifa->ifa_addr;
+        inet_ntop(AF_INET, &sa->sin_addr, serverIpAdress, sizeof(serverIpAdress));
+        break; // first non-loopback IPv4
+      }
+    }
+    freeifaddrs(ifaddr);
+  }
+
+  printf ("server starting at [%s] port [%s]\n",serverIpAdress, argv[1]);
+
   /* ouverture du socket */
   sockfd = socket (AF_INET,SOCK_STREAM,0);
   if (sockfd<0) {printf ("impossible d'ouvrir le socket\n");exit(0);}
@@ -82,7 +100,16 @@ int main(int argc, char** argv )
 			while(1) {  
 				while (read(newsockfd,&c,1)!=1);
 			 	if (c == '\n') {
-			 		printf(" [%s]\n", inet_ntoa(cli_addr.sin_addr));
+          //keep what was received before newline in a msg_buffer
+          char msg_buffer[1024];
+          snprintf(msg_buffer, sizeof(msg_buffer), " [%s]\n", inet_ntoa(cli_addr.sin_addr));
+
+          //print the received message with IP address
+          printf("%s", msg_buffer);
+          //broadcast to every connected client what was received
+          for (int i = 0; i < strlen(msg_buffer); i++) {
+            write(newsockfd, &msg_buffer[i], 1);
+          }
 			 	} else {
 			 		printf("%c",c);
 			 	}
