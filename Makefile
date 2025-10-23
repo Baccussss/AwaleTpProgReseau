@@ -3,7 +3,7 @@ CFLAGS = -std=c11 -Wall -Wextra -O2
 
 SRCS = main.c awale.c
 OBJS = $(SRCS:.c=.o)
-TARGET = awale
+TARGET = awale socket_client socket_server
 
 all: $(TARGET)
 
