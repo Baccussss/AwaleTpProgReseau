@@ -1,3 +1,4 @@
 Pouvoir créer une partie sur le réseau et être associéé en joueur dessus
-pouvoir rejoindre une partie dispo (et être joueur 2)
-pouvoir voir les parties disponibles (=pas 2 joueurs)
+pouvoir avoir plusieurs parties conccurente ?
+    pouvoir rejoindre une partie dispo (et être joueur 2)
+    pouvoir voir les parties disponibles (=pas 2 joueurs)
