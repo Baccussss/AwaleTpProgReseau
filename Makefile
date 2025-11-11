@@ -8,6 +8,7 @@ TARGETS = awale server_awale client_awale
 OBJS = awale.o server_awale.o client_awale.o main.o
 
 all: $(TARGETS)
+	@rm -f $(OBJS) # delete .o files to not create clutter
 
 # awale (local terminal game) needs main.o + awale.o
 awale: main.o awale.o
@@ -24,6 +25,8 @@ client_awale: client_awale.o
 # Generic rule to compile .c -> .o
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+
 
 clean:
 	rm -f $(OBJS) $(TARGETS)
