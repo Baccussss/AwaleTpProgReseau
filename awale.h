@@ -21,8 +21,14 @@ bool awale_is_game_over(const Awale *g);
 
 // Affiche le plateau selon le point de vue du joueur (POV: 0=J1, 1=J2)
 // Écrit le texte dans 'out' (taille out_sz)
+// Affiche le plateau selon le point de vue du joueur (POV: 0=J1, 1=J2)
+// out : buffer de sortie
+// current_player : indice du joueur dont c'est le tour (0 ou 1)
+// current_POV : POV du destinataire (0 ou 1)
+// pov_name / other_name : pseudos (NUL-terminated)
 void afficher_interface_jeu(char *out, size_t out_sz,
                             const int board[12], const int scores[2],
-                            int current_player, int current_POV);
+                            int current_player, int current_POV,
+                            const char *pov_name, const char *other_name);
 
 #endif // AWALE_H

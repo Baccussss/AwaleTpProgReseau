@@ -146,24 +146,61 @@ int main(int argc, char **argv)
         char hello[160];
         snprintf(hello, sizeof(hello), "Bienvenue ! Vous êtes Joueur %d.\nEn attente de l'autre joueur...\n\n", i + 1);
         send_str(players[i].fd, hello);
+
+        // Demander le pseudo au client et l'enregistrer
+        send_str(players[i].fd, "Entrez votre pseudo (max 31 caractères) puis Entrée :\n");
+        char namebuf[128];
+        int rr = recv_line(players[i].fd, namebuf, sizeof(namebuf));
+        if (rr <= 0)
+        {
+            // lecture échouée -> garder le pseudo par défaut
+            char confirm[80];
+            snprintf(confirm, sizeof(confirm), "Pas de pseudo reçu. Vous êtes %s\n\n", players[i].username);
+            send_str(players[i].fd, confirm);
+        }
+        else
+        {
+            // enlever \r et \n en fin
+            size_t L = strlen(namebuf);
+            while (L > 0 && (namebuf[L - 1] == '\n' || namebuf[L - 1] == '\r'))
+                namebuf[--L] = '\0';
+            if (L == 0)
+            {
+                char confirm[80];
+                snprintf(confirm, sizeof(confirm), "Pseudo vide, vous êtes %s\n\n", players[i].username);
+                send_str(players[i].fd, confirm);
+            }
+            else
+            {
+                // copier en veillant à la terminaison
+                strncpy(players[i].username, namebuf, sizeof(players[i].username) - 1);
+                players[i].username[sizeof(players[i].username) - 1] = '\0';
+                char confirm[128];
+                snprintf(confirm, sizeof(confirm), "Bonjour %s ! En attente de l'autre joueur...\n\n", players[i].username);
+                send_str(players[i].fd, confirm);
+            }
+        }
     }
 
     // Les deux joueurs sont connectés
-    send_str(players[0].fd, "Les deux joueurs sont présents. Vous êtes Joueur 1.\n");
-    send_str(players[1].fd, "Les deux joueurs sont présents. Vous êtes Joueur 2.\n");
+    char readybuf[160];
+    snprintf(readybuf, sizeof(readybuf), "Les deux joueurs sont présents. Vous êtes %s.\n", players[0].username);
+    send_str(players[0].fd, readybuf);
+    snprintf(readybuf, sizeof(readybuf), "Les deux joueurs sont présents. Vous êtes %s.\n", players[1].username);
+    send_str(players[1].fd, readybuf);
 
-    // --- État de jeu ---
+    // État de jeu
     Awale g;
     awale_init(&g);
 
-    // --- UI initiale POV pour chaque joueur ---
+    // UI initiale POV pour chaque joueur
     char ui0[1024], ui1[1024];
-    afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0); // POV J1
-    afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1); // POV J2
+    afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0, players[0].username, players[1].username); // POV J1
+    afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1, players[1].username, players[0].username); // POV J2
     send_str(players[0].fd, ui0);
     send_str(players[1].fd, ui1);
 
-    // --- Boucle de jeu ---
+    // Boucle de jeu
     while (1)
     {
         int p = g.current_player; // 0 -> J1 ; 1 -> J2
@@ -189,8 +226,8 @@ int main(int argc, char **argv)
         {
             send_str(fd_curr, "Entrée invalide. Tapez un entier entre 0 et 5.\n");
             // Réafficher l'UI pour rester synchro
-            afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
-            afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
+            afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0, players[0].username, players[1].username);
+            afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1, players[1].username, players[0].username);
             send_str(players[0].fd, ui0);
             send_str(players[1].fd, ui1);
             continue;
@@ -200,28 +237,40 @@ int main(int argc, char **argv)
         if (!awale_move(&g, h))
         {
             send_str(fd_curr, "Coup invalide (maison vide / règle). Réessayez.\n");
-            afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
-            afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
+            afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0, players[0].username, players[1].username);
+            afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1, players[1].username, players[0].username);
             send_str(players[0].fd, ui0);
             send_str(players[1].fd, ui1);
             continue;
         }
 
         // Coup accepté → diffuser l'état POV aux deux
-        afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
-        afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
+        afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0, players[0].username, players[1].username);
+        afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1, players[1].username, players[0].username);
         send_str(players[0].fd, ui0);
         send_str(players[1].fd, ui1);
 
         // Fin de partie ? (version simple)
         if (awale_is_game_over(&g))
         {
-            char endmsg[256];
-            snprintf(endmsg, sizeof(endmsg),
-                     "Partie terminée. Scores : J1=%d, J2=%d\n%s\n",
-                     g.score[0], g.score[1],
-                     (g.score[0] > g.score[1]) ? "J1 gagne !" : (g.score[1] > g.score[0]) ? "J2 gagne !"
-                                                                                          : "Égalité !");
+            char endmsg[512];
+            char resultbuf[128];
+            const char *resultmsg;
+            if (g.score[0] > g.score[1])
+            {
+                snprintf(resultbuf, sizeof(resultbuf), "%s gagne !", players[0].username);
+                resultmsg = resultbuf;
+            }
+            else if (g.score[1] > g.score[0])
+            {
+                snprintf(resultbuf, sizeof(resultbuf), "%s gagne !", players[1].username);
+                resultmsg = resultbuf;
+            }
+            else
+            {
+                resultmsg = "Égalité !";
+            }
+            snprintf(endmsg, sizeof(endmsg), "Partie terminée. Scores : %s=%d, %s=%d\n%s\n", players[0].username, g.score[0], players[1].username, g.score[1], resultmsg);
             send_str(players[0].fd, endmsg);
             send_str(players[1].fd, endmsg);
             break;

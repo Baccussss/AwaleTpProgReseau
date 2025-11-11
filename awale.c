@@ -110,10 +110,11 @@ bool awale_move(Awale *g, int house_index)
 
 void afficher_interface_jeu(char *out, size_t out_sz,
                             const int board[12], const int scores[2],
-                            int current_player, int current_POV)
+                            int current_player, int current_POV,
+                            const char *pov_name, const char *other_name)
 {
     int top[6], bottom[6];
-    int top_player, bottom_player;
+    const char *top_name, *bottom_name;
 
     if (current_POV == 0)
     {
@@ -122,8 +123,8 @@ void afficher_interface_jeu(char *out, size_t out_sz,
             bottom[i] = board[i];   // 0..5
             top[i] = board[11 - i]; // 11..6
         }
-        bottom_player = 1;
-        top_player = 2;
+        bottom_name = pov_name;
+        top_name = other_name;
     }
     else
     {
@@ -132,33 +133,30 @@ void afficher_interface_jeu(char *out, size_t out_sz,
             bottom[i] = board[6 + i]; // 6..11
             top[i] = board[5 - i];    // 5..0
         }
-        bottom_player = 2;
-        top_player = 1;
+        bottom_name = pov_name;
+        top_name = other_name;
     }
 
-    char msg[160];
+    char msg[256];
     if (current_player == current_POV)
     {
-        snprintf(msg, sizeof(msg),
-                 "À vous de jouer (J%d) — Choisissez une maison (0-5) puis Entrée\n",
-                 current_POV + 1);
+        snprintf(msg, sizeof(msg), "À vous de jouer (%s) — Choisissez une maison (0-5) puis Entrée\n", pov_name);
     }
     else
     {
-        snprintf(msg, sizeof(msg),
-                 "En attente du coup adverse de J%d...\n",
-                 current_player + 1);
+        snprintf(msg, sizeof(msg), "En attente du coup adverse de %s...\n", other_name);
     }
 
     snprintf(out, out_sz,
-             "\n========== PLATEAU D'AWALE ==========\n\n"
+             "\n========== PLATEAU D'AWALE ==========%s\n\n"
              " ___ ___ ___ ___ ___ ___ \n"
-             "|%2d |%2d |%2d |%2d |%2d |%2d |  [Joueur %d]\n"
+             "|%2d |%2d |%2d |%2d |%2d |%2d |  [%s]\n"
              "|___|___|___|___|___|___|  [Score: %d]\n"
-             "|%2d |%2d |%2d |%2d |%2d |%2d |  [Joueur %d]\n"
+             "|%2d |%2d |%2d |%2d |%2d |%2d |  [%s]\n"
              "|___|___|___|___|___|___|  [Score: %d]\n\n"
              "%s",
-             top[0], top[1], top[2], top[3], top[4], top[5], top_player, scores[top_player - 1],
-             bottom[0], bottom[1], bottom[2], bottom[3], bottom[4], bottom[5], bottom_player, scores[bottom_player - 1],
+             "",
+             top[0], top[1], top[2], top[3], top[4], top[5], top_name, scores[(current_POV == 0) ? 1 : 0],
+             bottom[0], bottom[1], bottom[2], bottom[3], bottom[4], bottom[5], bottom_name, scores[(current_POV == 0) ? 0 : 1],
              msg);
 }
