@@ -13,6 +13,20 @@
 #include "awale.h" // Awale + afficher_interface_jeu
 
 #define BACKLOG 5
+#define MAX_FRIENDS 16
+#define MAX_NAME_LEN 32
+#define MAX_BIO_LEN 128
+
+typedef struct
+{
+    int fd;
+    char username[MAX_NAME_LEN];
+    char bio[MAX_BIO_LEN];
+    char friends[MAX_FRIENDS][MAX_NAME_LEN];
+    int n_friends;
+    bool is_player;
+    bool connected;
+} player_t;
 
 // Envoi robuste: s'assure que tout le buffer part
 static int send_all(int fd, const char *buf, size_t len)
@@ -102,30 +116,41 @@ int main(int argc, char **argv)
     printf("Serveur Awale: en attente de 2 joueurs sur le port %s...\n", argv[1]);
 
     // --- Accepter exactement deux joueurs ---
-    int players[2] = {-1, -1};
+    player_t players[2];
+    for (int i = 0; i < 2; ++i)
+    {
+        players[i].fd = -1;
+        players[i].username[0] = '\0';
+        players[i].bio[0] = '\0';
+        players[i].n_friends = 0;
+        players[i].is_player = true;
+        players[i].connected = false;
+    }
     struct sockaddr_in cli_addr;
     socklen_t clilen;
 
     for (int i = 0; i < 2; ++i)
     {
         clilen = sizeof(cli_addr);
-        players[i] = accept(listenfd, (struct sockaddr *)&cli_addr, &clilen);
-        if (players[i] < 0)
+        int fd = accept(listenfd, (struct sockaddr *)&cli_addr, &clilen);
+        if (fd < 0)
         {
             perror("accept");
             return 1;
         }
+        players[i].fd = fd;
+        players[i].connected = true;
+        snprintf(players[i].username, sizeof(players[i].username), "J%d", i + 1); // default username
 
         printf("Joueur %d connecté depuis %s\n", i + 1, inet_ntoa(cli_addr.sin_addr));
         char hello[160];
-        snprintf(hello, sizeof(hello),
-                 "Bienvenue ! Vous êtes Joueur %d.\nEn attente de l'autre joueur...\n\n", i + 1);
-        send_str(players[i], hello);
+        snprintf(hello, sizeof(hello), "Bienvenue ! Vous êtes Joueur %d.\nEn attente de l'autre joueur...\n\n", i + 1);
+        send_str(players[i].fd, hello);
     }
 
     // Les deux joueurs sont connectés
-    send_str(players[0], "Les deux joueurs sont présents. Vous êtes Joueur 1.\n");
-    send_str(players[1], "Les deux joueurs sont présents. Vous êtes Joueur 2.\n");
+    send_str(players[0].fd, "Les deux joueurs sont présents. Vous êtes Joueur 1.\n");
+    send_str(players[1].fd, "Les deux joueurs sont présents. Vous êtes Joueur 2.\n");
 
     // --- État de jeu ---
     Awale g;
@@ -135,15 +160,15 @@ int main(int argc, char **argv)
     char ui0[1024], ui1[1024];
     afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0); // POV J1
     afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1); // POV J2
-    send_str(players[0], ui0);
-    send_str(players[1], ui1);
+    send_str(players[0].fd, ui0);
+    send_str(players[1].fd, ui1);
 
     // --- Boucle de jeu ---
     while (1)
     {
         int p = g.current_player; // 0 -> J1 ; 1 -> J2
-        int fd_curr = players[p];
-        int fd_wait = players[1 - p];
+        int fd_curr = players[p].fd;
+        int fd_wait = players[1 - p].fd;
 
         // Prompt uniquement au joueur courant
         send_str(fd_curr, "Entrez un nombre (0-5) puis Entrée:\n");
@@ -166,8 +191,8 @@ int main(int argc, char **argv)
             // Réafficher l'UI pour rester synchro
             afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
             afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
-            send_str(players[0], ui0);
-            send_str(players[1], ui1);
+            send_str(players[0].fd, ui0);
+            send_str(players[1].fd, ui1);
             continue;
         }
 
@@ -177,16 +202,16 @@ int main(int argc, char **argv)
             send_str(fd_curr, "Coup invalide (maison vide / règle). Réessayez.\n");
             afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
             afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
-            send_str(players[0], ui0);
-            send_str(players[1], ui1);
+            send_str(players[0].fd, ui0);
+            send_str(players[1].fd, ui1);
             continue;
         }
 
         // Coup accepté → diffuser l'état POV aux deux
         afficher_interface_jeu(ui0, sizeof(ui0), g.board, g.score, g.current_player, 0);
         afficher_interface_jeu(ui1, sizeof(ui1), g.board, g.score, g.current_player, 1);
-        send_str(players[0], ui0);
-        send_str(players[1], ui1);
+        send_str(players[0].fd, ui0);
+        send_str(players[1].fd, ui1);
 
         // Fin de partie ? (version simple)
         if (awale_is_game_over(&g))
@@ -197,15 +222,17 @@ int main(int argc, char **argv)
                      g.score[0], g.score[1],
                      (g.score[0] > g.score[1]) ? "J1 gagne !" : (g.score[1] > g.score[0]) ? "J2 gagne !"
                                                                                           : "Égalité !");
-            send_str(players[0], endmsg);
-            send_str(players[1], endmsg);
+            send_str(players[0].fd, endmsg);
+            send_str(players[1].fd, endmsg);
             break;
         }
     }
 
     // Nettoyage
-    close(players[0]);
-    close(players[1]);
+    if (players[0].fd >= 0)
+        close(players[0].fd);
+    if (players[1].fd >= 0)
+        close(players[1].fd);
     close(listenfd);
     return 0;
 }
