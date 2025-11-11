@@ -18,7 +18,9 @@
 #define MAX_PSEUDO_LEN 32
 #define MAX_BIO_LEN 128
 #define TAILLE_BUFFER 1024
+#define MAX_NB_PARTIES 50
 
+// Structure représentant un joueur
 typedef struct
 {
     int fd;
@@ -27,19 +29,48 @@ typedef struct
     bool en_ligne;
     int id_partie; // -1 si pas en partie
 } joueur_t;
+// Structure représentant une partie
+typedef struct
+{
+    int id;
+    Awale jeu;
+    joueur_t *joueur1;
+    joueur_t *joueur2;
+    bool en_cours;
+} partie_t;
 
 
 // ------------- Initialisation des variables globales
 joueur_t joueurs[MAX_JOUEURS];
 pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;
+partie_t parties[MAX_NB_PARTIES];
+int nb_parties_actives = 0;
+pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER;
 
 // ------------ Prototypes des fonctions
+//Gestion des sockets et des clients
 void *gerer_client(void *arg);
 joueur_t *gerer_connexion(char *pseudo, int socket_client);
 void gerer_deconnexion(joueur_t *joueur);
 int envoyer_message(int sockfd, const char *message);
 joueur_t *trouver_joueur_par_pseudo(const char *pseudo);
+
+//Gestion defi d'un joueur par un autre
+void afficher_joueurs_en_ligne(joueur_t *joueur);
+void gerer_defi(joueur_t *joueur, char *buffer);
+void gerer_accepter(joueur_t *joueur);
+void gerer_refuser(joueur_t *joueur);
+partie_t *creer_partie(joueur_t *j1, joueur_t *j2);
+
+// Gestion des commandes lors de la partie
+void jouer_coup(joueur_t *joueur, int maison);
+void envoyer_plateau_aux_joueurs(partie_t *partie);
+void terminer_partie(partie_t *partie);
+
+partie_t *trouver_partie_joueur(joueur_t *joueur);
+
 void menu(joueur_t *joueur);
+
 
 
 
@@ -96,6 +127,7 @@ static int recv_line(int fd, char *buf, size_t maxlen)
     buf[i] = '\0';
     return (int)i;
 }
+
 
 // Trouver un joueur par son pseudo
 joueur_t *trouver_joueur_par_pseudo(const char *pseudo)
@@ -215,6 +247,198 @@ void *gerer_client(void *arg)
     return NULL;
 }
 
+//-------------- Partie defi d'un joueur par un autre et commandes lors de la partie
+// la fonction est plutot clair je dirais
+void afficher_joueurs_en_ligne(joueur_t *joueur) {
+    pthread_mutex_lock(&mutex_joueurs);
+    
+    char message[TAILLE_BUFFER] = "Joueurs en ligne:\n";
+    int count = 0;
+    
+    for (int i = 0; i < MAX_JOUEURS; i++) {
+        if (joueurs[i].en_ligne && strcmp(joueurs[i].pseudo, joueur->pseudo) != 0) {
+            strcat(message, "  - ");
+            strcat(message, joueurs[i].pseudo);
+            if (joueurs[i].id_partie != -1) {
+                strcat(message, " (en partie)");
+            }
+            strcat(message, "\n");
+            count++;
+        }
+    }
+    
+    if (count == 0) {
+        strcat(message, "  Aucun autre joueur en ligne.\n");
+    }
+    
+    envoyer_message(joueur->fd, message);
+    pthread_mutex_unlock(&mutex_joueurs);
+}
+
+// Créer une nouvelle partie
+partie_t *creer_partie(joueur_t *j1, joueur_t *j2) {
+    pthread_mutex_lock(&mutex_parties);
+    
+    partie_t *partie = NULL;
+    for (int i = 0; i < MAX_NB_PARTIES; i++) {
+        if (!parties[i].en_cours) {
+            partie = &parties[i];
+            partie->id = i;
+            partie->joueur1 = j1;
+            partie->joueur2 = j2;
+            awale_init(&partie->jeu);
+            partie->en_cours = true;
+            
+            j1->id_partie = i;
+            j2->id_partie = i;
+            
+            nb_parties_actives++;
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&mutex_parties);
+    return partie;
+}
+// Gérer un défi
+void gerer_defi(joueur_t *joueur, char *buffer) {
+    char pseudo_adversaire[MAX_PSEUDO_LEN];
+    
+    if (sscanf(buffer, "DEFI %s", pseudo_adversaire) != 1) {
+        envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n");
+        return;
+    }
+    
+    if (joueur->id_partie != -1) {
+        envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n");
+        return;
+    }
+    
+    joueur_t *adversaire = trouver_joueur_par_pseudo(pseudo_adversaire);
+    if (!adversaire || !adversaire->en_ligne) {
+        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n");
+        return;
+    }
+    
+    if (adversaire->id_partie != -1) {
+        envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n");
+        return;
+    }
+    
+    // Créer la partie immédiatement (version simplifiée sans acceptation)
+    partie_t *partie = creer_partie(joueur, adversaire);
+    if (!partie) {
+        envoyer_message(joueur->fd, "Impossible de créer la partie (serveur plein).\n");
+        return;
+    }
+    
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Partie créée avec %s!\n", adversaire->pseudo);
+    envoyer_message(joueur->fd, msg);
+    
+    snprintf(msg, sizeof(msg), "Partie créée avec %s!\n", joueur->pseudo);
+    envoyer_message(adversaire->fd, msg);
+    
+    // Envoyer le plateau initial
+    envoyer_plateau_aux_joueurs(partie);
+}
+
+// Trouver la partie d'un joueur
+partie_t *trouver_partie_joueur(joueur_t *joueur) {
+    if (joueur->id_partie == -1) {
+        return NULL;
+    }
+    return &parties[joueur->id_partie];
+}
+
+// Envoyer le plateau aux deux joueurs
+void envoyer_plateau_aux_joueurs(partie_t *partie) {
+    char ui_j1[1024], ui_j2[1024];
+    
+    afficher_interface_jeu(ui_j1, sizeof(ui_j1), 
+                          partie->jeu.board, 
+                          partie->jeu.score, 
+                          partie->jeu.current_player, 
+                          0, 
+                          partie->joueur1->pseudo, 
+                          partie->joueur2->pseudo);
+                          
+    afficher_interface_jeu(ui_j2, sizeof(ui_j2), 
+                          partie->jeu.board, 
+                          partie->jeu.score, 
+                          partie->jeu.current_player, 
+                          1, 
+                          partie->joueur2->pseudo, 
+                          partie->joueur1->pseudo);
+    
+    envoyer_message(partie->joueur1->fd, ui_j1);
+    envoyer_message(partie->joueur2->fd, ui_j2);
+}
+
+// Jouer un coup
+void jouer_coup(joueur_t *joueur, int maison) {
+    partie_t *partie = trouver_partie_joueur(joueur);
+    if (!partie) {
+        envoyer_message(joueur->fd, "Vous n'êtes pas dans une partie!\n");
+        return;
+    }
+    
+    // Vérifier que c'est au tour du joueur
+    int joueur_num = (partie->joueur1 == joueur) ? 0 : 1;
+    if (partie->jeu.current_player != joueur_num) {
+        envoyer_message(joueur->fd, "Ce n'est pas votre tour!\n");
+        return;
+    }
+    
+    // Tenter le coup
+    if (!awale_move(&partie->jeu, maison)) {
+        envoyer_message(joueur->fd, "Coup invalide (maison vide ou règle non respectée). Réessayez.\n");
+        envoyer_plateau_aux_joueurs(partie);
+        return;
+    }
+    
+    // Coup accepté, envoyer le nouveau plateau
+    envoyer_plateau_aux_joueurs(partie);
+    
+    // Vérifier fin de partie
+    if (awale_is_game_over(&partie->jeu)) {
+        char endmsg[512];
+        const char *resultmsg;
+        
+        if (partie->jeu.score[0] > partie->jeu.score[1]) {
+            resultmsg = partie->joueur1->pseudo;
+        } else if (partie->jeu.score[1] > partie->jeu.score[0]) {
+            resultmsg = partie->joueur2->pseudo;
+        } else {
+            resultmsg = "Égalité";
+        }
+        
+        snprintf(endmsg, sizeof(endmsg), 
+                "Partie terminée!\nScores: %s=%d, %s=%d\nRésultat: %s gagne!\n",
+                partie->joueur1->pseudo, partie->jeu.score[0],
+                partie->joueur2->pseudo, partie->jeu.score[1],
+                resultmsg);
+        
+        envoyer_message(partie->joueur1->fd, endmsg);
+        envoyer_message(partie->joueur2->fd, endmsg);
+        
+        terminer_partie(partie);
+    }
+}
+
+// Terminer une partie
+void terminer_partie(partie_t *partie) {
+    pthread_mutex_lock(&mutex_parties);
+    
+    partie->joueur1->id_partie = -1;
+    partie->joueur2->id_partie = -1;
+    partie->en_cours = false;
+    nb_parties_actives--;
+    
+    pthread_mutex_unlock(&mutex_parties);
+}
+
+
 
 // ----------------- Le grand menu des commandes
 void menu(joueur_t *joueur)
@@ -240,15 +464,38 @@ void menu(joueur_t *joueur)
 
         sscanf(buffer, "%s", commande);
 
-        if (strcmp(commande, "LOGOUT") == 0)
+        if (strcmp(commande, "DECO") == 0)
         {
             gerer_deconnexion(joueur);
         }
         else if (strcmp(commande, "HELP") == 0)
         {
             envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                        "LOGOUT - Se déconnecter\n"
-                                        "HELP - Afficher cette aide\n");
+                                        "DECO - Se déconnecter\n"
+                                        "HELP - Afficher cette aide\n"
+                                        "LISTE - Lister les joueurs en ligne\n"
+                                        "DEFI <pseudo> - Défier un joueur\n"
+                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
+        }
+        else if (strcmp(commande, "LISTE") == 0)
+        {
+            afficher_joueurs_en_ligne(joueur);
+        }
+        else if (strcmp(commande, "DEFI") == 0)
+        {
+            gerer_defi(joueur, buffer);
+        }
+        else if (strcmp(commande, "JOUER") == 0)
+        {
+            int maison;
+            if (sscanf(buffer, "JOUER %d", &maison) == 1)
+            {
+                jouer_coup(joueur, maison);
+            }
+            else
+            {
+                envoyer_message(joueur->fd, "Format invalide. Utiliser: JOUER <0-5>\n");
+            }
         }
         else
         {
@@ -281,7 +528,13 @@ int main(int argc, char **argv)
         joueurs[i].en_ligne = false;
         joueurs[i].id_partie = -1;
     }
-
+    // Initialiser le tableau de parties
+    for (int i = 0; i < MAX_NB_PARTIES; i++)
+    {
+        parties[i].en_cours = false;
+        parties[i].joueur1 = NULL;
+        parties[i].joueur2 = NULL;
+    }
     // Créer la socket d'écoute
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)

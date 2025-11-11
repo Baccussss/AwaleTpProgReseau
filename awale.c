@@ -140,7 +140,7 @@ void afficher_interface_jeu(char *out, size_t out_sz,
     char msg[256];
     if (current_player == current_POV)
     {
-        snprintf(msg, sizeof(msg), "À vous de jouer (%s) — Choisissez une maison (0-5) puis Entrée\n", pov_name);
+        snprintf(msg, sizeof(msg), "À vous de jouer (%s) — Choisissez une maison (0-5): JOUER <0-5>\n", pov_name);
     }
     else
     {
