@@ -19,6 +19,7 @@
 #define MAX_JOUEURS 100
 #define MAX_PSEUDO_LEN 32
 #define MAX_BIO_LEN 128
+#define MAX_AMIS 20
 #define TAILLE_BUFFER 1024
 #define MAX_NB_PARTIES 50
 #define MAX_OBSERVATEURS 10
@@ -29,6 +30,8 @@ typedef struct
     int fd;
     char pseudo[MAX_PSEUDO_LEN];
     char bio[MAX_BIO_LEN];
+    char amis[MAX_AMIS][MAX_PSEUDO_LEN];
+    int nb_amis;
     bool en_ligne;
     int id_partie;                            // -1 si pas en partie
     char demande_defi_depuis[MAX_PSEUDO_LEN]; // pseudo de qui a défié ce joueur (vide si aucun)
@@ -85,11 +88,15 @@ void menu(joueur_t *joueur);
 // Déclaration pour le chat privé (déclaration)
 void gerer_chat_prive(joueur_t *emetteur, char *message);
 
-// Déclaration pour la commande BIO
+// Déclaration pour la commande pour écrire la bio
 void gerer_bio(joueur_t *joueur, char *buffer);
 
-// Déclaration pour la commande INFO
+// Déclaration pour consulter les infos d'un joueur
 void gerer_info(joueur_t *joueur, char *buffer);
+
+// Gestion des amis
+void gerer_ajouter_ami(joueur_t *joueur, char *buffer);
+void gerer_consulter_ami(joueur_t *joueur, char *buffer);
 
 //-------------- Partie initialisation du serveur et gestion des sockets
 // Piqué sur les exemples du TP1
@@ -198,6 +205,13 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     joueur->en_ligne = true;
     joueur->id_partie = -1;
     joueur->demande_defi_depuis[0] = '\0';
+    // si c'est un nouveau slot (pseudo initialisé), s'assurer que la liste d'amis est vide
+    if (existant == NULL)
+    {
+        joueur->nb_amis = 0;
+        for (int k = 0; k < MAX_AMIS; k++)
+            joueur->amis[k][0] = '\0';
+    }
 
     envoyer_message(socket_client, "Connexion réussie!\n");
     // on envoie les commandes de menu tout de suite et non pas avec la fonction menu
@@ -211,6 +225,8 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
                                 "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
                                 "BIO <texte> - Écrire votre bio\n"
                                 "INFO <pseudo> - Voir pseudo et bio d'un joueur\n"
+                                "AJOUTERAMI <pseudo> - Ajouter <pseudo> à votre liste d'amis\n"
+                                "CONSULTERAMI - Afficher votre liste d'amis\n"
                                 "OBSERVER <id_partie> - Observer une partie en cours\n"
                                 "QUITTEROBS - Quitter l'observation d'une partie\n"
                                 "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
@@ -834,6 +850,92 @@ void gerer_info(joueur_t *joueur, char *buffer)
     envoyer_message(joueur->fd, buf);
 }
 
+// ----------------- Gérer l'ajout d'un ami
+// Format attendu: "AJOUTERAMI <pseudo>"
+void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
+{
+    char target[MAX_PSEUDO_LEN];
+    if (sscanf(buffer, "AJOUTERAMI %31s", target) != 1)
+    {
+        envoyer_message(joueur->fd, "Format: AJOUTERAMI <pseudo>\n");
+        return;
+    }
+
+    // ne pas s'ajouter soi-même
+    if (strcmp(target, joueur->pseudo) == 0)
+    {
+        envoyer_message(joueur->fd, "Vous ne pouvez pas vous ajouter vous-même en ami.\n");
+        return;
+    }
+
+    pthread_mutex_lock(&mutex_joueurs);
+
+    // vérifier que la cible existe
+    joueur_t *dest = trouver_joueur_par_pseudo(target);
+    if (!dest)
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Joueur introuvable.\n");
+        return;
+    }
+
+    // vérifier doublon
+    for (int i = 0; i < joueur->nb_amis; i++)
+    {
+        if (strcmp(joueur->amis[i], target) == 0)
+        {
+            pthread_mutex_unlock(&mutex_joueurs);
+            envoyer_message(joueur->fd, "Ce joueur est déjà dans votre liste d'amis.\n");
+            return;
+        }
+    }
+
+    if (joueur->nb_amis >= MAX_AMIS)
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Votre liste d'amis est pleine.\n");
+        return;
+    }
+
+    // ajouter
+    strncpy(joueur->amis[joueur->nb_amis], target, MAX_PSEUDO_LEN - 1);
+    joueur->amis[joueur->nb_amis][MAX_PSEUDO_LEN - 1] = '\0';
+    joueur->nb_amis++;
+
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s ajouté à votre liste d'amis.\n", target);
+    envoyer_message(joueur->fd, buf);
+}
+
+// ----------------- Gérer la consultation de la liste d'amis
+// Affiche la liste d'amis du joueur avec leur statut en ligne/hors-ligne
+void gerer_consulter_ami(joueur_t *joueur, char *buffer)
+{
+    pthread_mutex_lock(&mutex_joueurs);
+    if (joueur->nb_amis == 0)
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Vous n'avez aucun ami dans votre liste.\n");
+        return;
+    }
+
+    char out[TAILLE_BUFFER];
+    int pos = 0;
+    pos += snprintf(out + pos, sizeof(out) - pos, "Vos amis (%d):\n", joueur->nb_amis);
+    for (int i = 0; i < joueur->nb_amis && pos < (int)sizeof(out) - 1; i++)
+    {
+        const char *nom = joueur->amis[i];
+        joueur_t *j = trouver_joueur_par_pseudo(nom);
+        const char *statut = (j && j->en_ligne) ? "en ligne" : "hors ligne";
+        pos += snprintf(out + pos, sizeof(out) - pos, " - %s (%s)\n", nom, statut);
+    }
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    envoyer_message(joueur->fd, out);
+}
+
 //---- -----------LA COMMANDE SECRETE shrek
 void shrek(joueur_t *joueur, char *buffer)
 {
@@ -960,6 +1062,27 @@ void menu(joueur_t *joueur)
                 gerer_info(joueur, buffer);
             }
         }
+        else if (strcmp(commande, "AJOUTERAMI") == 0)
+        {
+            // Format: AJOUTERAMI <pseudo>
+            char target[MAX_PSEUDO_LEN];
+            if (sscanf(buffer, "AJOUTERAMI %31s", target) != 1)
+            {
+                envoyer_message(joueur->fd, "Format: AJOUTERAMI <pseudo>\n");
+            }
+            else
+            {
+                gerer_ajouter_ami(joueur, buffer);
+            }
+        }
+        else if (strcmp(commande, "CONSULTERAMI") == 0)
+        {
+            gerer_consulter_ami(joueur, buffer);
+        }
+        else if (strcmp(commande, "ACCEPTER") == 0)
+        {
+            gerer_accepter(joueur);
+        }
         else if (strcmp(commande, "JOUER") == 0)
         {
             int maison;
@@ -1026,6 +1149,9 @@ int main(int argc, char **argv)
         joueurs[i].fd = -1;
         joueurs[i].pseudo[0] = '\0';
         joueurs[i].bio[0] = '\0';
+        joueurs[i].nb_amis = 0;
+        for (int k = 0; k < MAX_AMIS; k++)
+            joueurs[i].amis[k][0] = '\0';
         joueurs[i].en_ligne = false;
         joueurs[i].id_partie = -1;
     }
