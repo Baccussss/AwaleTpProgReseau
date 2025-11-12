@@ -1,6 +1,3 @@
-Ajouter une POV spectator (POV = 2) sur la fonction d'affichage et fair een sorte que quelqu'un puisse regardeer le mathc
-Pouvoir créer une partie sur le réseau et être associéé en joueur dessus
-pouvoir avoir plusieurs parties conccurente ?
-    pouvoir rejoindre une partie dispo (et être joueur 2)
-    pouvoir voir les parties disponibles (=pas 2 joueurs)
-
+FIN DE PARTIE AWALE
+il se passe quoi si deco d'un joueur
+Les observateurs, l'autre joueur
