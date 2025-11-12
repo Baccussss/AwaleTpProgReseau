@@ -27,7 +27,8 @@ typedef struct
     char pseudo[MAX_PSEUDO_LEN];
     char bio[MAX_BIO_LEN];
     bool en_ligne;
-    int id_partie; // -1 si pas en partie
+    int id_partie;                            // -1 si pas en partie
+    char demande_defi_depuis[MAX_PSEUDO_LEN]; // pseudo de qui a défié ce joueur (vide si aucun)
 } joueur_t;
 // Structure représentant une partie
 typedef struct
@@ -39,7 +40,6 @@ typedef struct
     bool en_cours;
 } partie_t;
 
-
 // ------------- Initialisation des variables globales
 joueur_t joueurs[MAX_JOUEURS];
 pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;
@@ -48,14 +48,14 @@ int nb_parties_actives = 0;
 pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER;
 
 // ------------ Prototypes des fonctions
-//Gestion des sockets et des clients
+// Gestion des sockets et des clients
 void *gerer_client(void *arg);
 joueur_t *gerer_connexion(char *pseudo, int socket_client);
 void gerer_deconnexion(joueur_t *joueur);
 int envoyer_message(int sockfd, const char *message);
 joueur_t *trouver_joueur_par_pseudo(const char *pseudo);
 
-//Gestion defi d'un joueur par un autre
+// Gestion defi d'un joueur par un autre
 void afficher_joueurs_en_ligne(joueur_t *joueur);
 void gerer_defi(joueur_t *joueur, char *buffer);
 void gerer_accepter(joueur_t *joueur);
@@ -70,9 +70,6 @@ void terminer_partie(partie_t *partie);
 partie_t *trouver_partie_joueur(joueur_t *joueur);
 
 void menu(joueur_t *joueur);
-
-
-
 
 //-------------- Partie initialisation du serveur et gestion des sockets
 // Piqué sur les exemples du TP1
@@ -128,7 +125,6 @@ static int recv_line(int fd, char *buf, size_t maxlen)
     return (int)i;
 }
 
-
 // Trouver un joueur par son pseudo
 joueur_t *trouver_joueur_par_pseudo(const char *pseudo)
 {
@@ -181,6 +177,7 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     joueur->fd = socket_client;
     joueur->en_ligne = true;
     joueur->id_partie = -1;
+    joueur->demande_defi_depuis[0] = '\0';
 
     envoyer_message(socket_client, "Connexion réussie!\n");
     printf("Joueur connecté: %s\n", pseudo);
@@ -198,13 +195,24 @@ void gerer_deconnexion(joueur_t *joueur)
     pthread_mutex_lock(&mutex_joueurs);
     joueur->en_ligne = false;
     joueur->id_partie = -1;
+    // nettoyer les défis en attente provenant de ce joueur chez les autres
+    for (int i = 0; i < MAX_JOUEURS; i++)
+    {
+        if (joueurs[i].demande_defi_depuis[0] != '\0' && strcmp(joueurs[i].demande_defi_depuis, joueur->pseudo) == 0)
+        {
+            joueurs[i].demande_defi_depuis[0] = '\0';
+            if (joueurs[i].en_ligne)
+            {
+                envoyer_message(joueurs[i].fd, "Le joueur qui vous a défié s'est déconnecté. Défi annulé.\n");
+            }
+        }
+    }
     close(joueur->fd);
     joueur->fd = -1;
     pthread_mutex_unlock(&mutex_joueurs);
 
     pthread_exit(NULL);
 }
-
 
 void *gerer_client(void *arg)
 {
@@ -249,196 +257,302 @@ void *gerer_client(void *arg)
 
 //-------------- Partie defi d'un joueur par un autre et commandes lors de la partie
 // la fonction est plutot clair je dirais
-void afficher_joueurs_en_ligne(joueur_t *joueur) {
+void afficher_joueurs_en_ligne(joueur_t *joueur)
+{
     pthread_mutex_lock(&mutex_joueurs);
-    
+
     char message[TAILLE_BUFFER] = "Joueurs en ligne:\n";
     int count = 0;
-    
-    for (int i = 0; i < MAX_JOUEURS; i++) {
-        if (joueurs[i].en_ligne && strcmp(joueurs[i].pseudo, joueur->pseudo) != 0) {
+
+    for (int i = 0; i < MAX_JOUEURS; i++)
+    {
+        if (joueurs[i].en_ligne && strcmp(joueurs[i].pseudo, joueur->pseudo) != 0)
+        {
             strcat(message, "  - ");
             strcat(message, joueurs[i].pseudo);
-            if (joueurs[i].id_partie != -1) {
+            if (joueurs[i].id_partie != -1)
+            {
                 strcat(message, " (en partie)");
             }
             strcat(message, "\n");
             count++;
         }
     }
-    
-    if (count == 0) {
+
+    if (count == 0)
+    {
         strcat(message, "  Aucun autre joueur en ligne.\n");
     }
-    
+
     envoyer_message(joueur->fd, message);
     pthread_mutex_unlock(&mutex_joueurs);
 }
 
 // Créer une nouvelle partie
-partie_t *creer_partie(joueur_t *j1, joueur_t *j2) {
+partie_t *creer_partie(joueur_t *j1, joueur_t *j2)
+{
     pthread_mutex_lock(&mutex_parties);
-    
+
     partie_t *partie = NULL;
-    for (int i = 0; i < MAX_NB_PARTIES; i++) {
-        if (!parties[i].en_cours) {
+    for (int i = 0; i < MAX_NB_PARTIES; i++)
+    {
+        if (!parties[i].en_cours)
+        {
             partie = &parties[i];
             partie->id = i;
             partie->joueur1 = j1;
             partie->joueur2 = j2;
             awale_init(&partie->jeu);
             partie->en_cours = true;
-            
+
             j1->id_partie = i;
             j2->id_partie = i;
-            
+
             nb_parties_actives++;
             break;
         }
     }
-    
+
     pthread_mutex_unlock(&mutex_parties);
     return partie;
 }
 // Gérer un défi
-void gerer_defi(joueur_t *joueur, char *buffer) {
+void gerer_defi(joueur_t *joueur, char *buffer)
+{
     char pseudo_adversaire[MAX_PSEUDO_LEN];
-    
-    if (sscanf(buffer, "DEFI %s", pseudo_adversaire) != 1) {
+
+    if (sscanf(buffer, "DEFI %s", pseudo_adversaire) != 1)
+    {
         envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n");
         return;
     }
-    
-    if (joueur->id_partie != -1) {
+
+    if (joueur->id_partie != -1)
+    {
         envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n");
         return;
     }
-    
+
     joueur_t *adversaire = trouver_joueur_par_pseudo(pseudo_adversaire);
-    if (!adversaire || !adversaire->en_ligne) {
+    if (!adversaire || !adversaire->en_ligne)
+    {
         envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n");
         return;
     }
-    
-    if (adversaire->id_partie != -1) {
+
+    if (adversaire->id_partie != -1)
+    {
         envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n");
         return;
     }
-    
-    // Créer la partie immédiatement (version simplifiée sans acceptation)
-    partie_t *partie = creer_partie(joueur, adversaire);
-    if (!partie) {
+
+    // Demander l'acceptation au joueur adverse (simple mécanisme de pending)
+    pthread_mutex_lock(&mutex_joueurs);
+    if (adversaire->demande_defi_depuis[0] != '\0')
+    {
+        // Quelqu'un d'autre a déjà défié cet adversaire
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Ce joueur a déjà un défi en attente.\n");
+        return;
+    }
+
+    // enregistrer le défi en attente
+    snprintf(adversaire->demande_defi_depuis, sizeof(adversaire->demande_defi_depuis), "%s", joueur->pseudo);
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Demande de défi envoyée à %s.\n", adversaire->pseudo);
+    envoyer_message(joueur->fd, msg);
+
+    snprintf(msg, sizeof(msg), "Vous avez reçu un défi de %s. Tapez ACCEPTER ou REFUSER.\n", joueur->pseudo);
+    envoyer_message(adversaire->fd, msg);
+}
+
+// Accepter un défi en attente
+void gerer_accepter(joueur_t *joueur)
+{
+    pthread_mutex_lock(&mutex_joueurs);
+    if (joueur->demande_defi_depuis[0] == '\0')
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Aucun défi en attente.\n");
+        return;
+    }
+
+    // Trouver le challenger
+    joueur_t *challenger = trouver_joueur_par_pseudo(joueur->demande_defi_depuis);
+    if (!challenger || !challenger->en_ligne)
+    {
+        joueur->demande_defi_depuis[0] = '\0';
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Le joueur qui vous a défié n'est plus en ligne.\n");
+        return;
+    }
+
+    // Vérifier que ni l'un ni l'autre ne sont déjà en partie
+    if (challenger->id_partie != -1 || joueur->id_partie != -1)
+    {
+        joueur->demande_defi_depuis[0] = '\0';
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Impossible de démarrer la partie (un joueur est déjà en partie).\n");
+        return;
+    }
+
+    // nettoyer l'état pending
+    joueur->demande_defi_depuis[0] = '\0';
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    // Créer la partie
+    partie_t *partie = creer_partie(challenger, joueur);
+    if (!partie)
+    {
+        envoyer_message(challenger->fd, "Impossible de créer la partie (serveur plein).\n");
         envoyer_message(joueur->fd, "Impossible de créer la partie (serveur plein).\n");
         return;
     }
-    
-    char msg[256];
-    snprintf(msg, sizeof(msg), "Partie créée avec %s!\n", adversaire->pseudo);
-    envoyer_message(joueur->fd, msg);
-    
-    snprintf(msg, sizeof(msg), "Partie créée avec %s!\n", joueur->pseudo);
-    envoyer_message(adversaire->fd, msg);
-    
+
+    char buf[256];
+    snprintf(buf, sizeof(buf), "Partie créée avec %s!\n", joueur->pseudo);
+    envoyer_message(challenger->fd, buf);
+    snprintf(buf, sizeof(buf), "Partie créée avec %s!\n", challenger->pseudo);
+    envoyer_message(joueur->fd, buf);
+
     // Envoyer le plateau initial
     envoyer_plateau_aux_joueurs(partie);
 }
 
+// Refuser un défi en attente
+void gerer_refuser(joueur_t *joueur)
+{
+    pthread_mutex_lock(&mutex_joueurs);
+    if (joueur->demande_defi_depuis[0] == '\0')
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Aucun défi en attente.\n");
+        return;
+    }
+
+    joueur_t *challenger = trouver_joueur_par_pseudo(joueur->demande_defi_depuis);
+    if (challenger && challenger->en_ligne)
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Votre défi a été refusé par %s.\n", joueur->pseudo);
+        envoyer_message(challenger->fd, buf);
+    }
+
+    joueur->demande_defi_depuis[0] = '\0';
+    pthread_mutex_unlock(&mutex_joueurs);
+    envoyer_message(joueur->fd, "Vous avez refusé le défi.\n");
+}
+
 // Trouver la partie d'un joueur
-partie_t *trouver_partie_joueur(joueur_t *joueur) {
-    if (joueur->id_partie == -1) {
+partie_t *trouver_partie_joueur(joueur_t *joueur)
+{
+    if (joueur->id_partie == -1)
+    {
         return NULL;
     }
     return &parties[joueur->id_partie];
 }
 
 // Envoyer le plateau aux deux joueurs
-void envoyer_plateau_aux_joueurs(partie_t *partie) {
+void envoyer_plateau_aux_joueurs(partie_t *partie)
+{
     char ui_j1[1024], ui_j2[1024];
-    
-    afficher_interface_jeu(ui_j1, sizeof(ui_j1), 
-                          partie->jeu.board, 
-                          partie->jeu.score, 
-                          partie->jeu.current_player, 
-                          0, 
-                          partie->joueur1->pseudo, 
-                          partie->joueur2->pseudo);
-                          
-    afficher_interface_jeu(ui_j2, sizeof(ui_j2), 
-                          partie->jeu.board, 
-                          partie->jeu.score, 
-                          partie->jeu.current_player, 
-                          1, 
-                          partie->joueur2->pseudo, 
-                          partie->joueur1->pseudo);
-    
+
+    afficher_interface_jeu(ui_j1, sizeof(ui_j1),
+                           partie->jeu.board,
+                           partie->jeu.score,
+                           partie->jeu.current_player,
+                           0,
+                           partie->joueur1->pseudo,
+                           partie->joueur2->pseudo);
+
+    afficher_interface_jeu(ui_j2, sizeof(ui_j2),
+                           partie->jeu.board,
+                           partie->jeu.score,
+                           partie->jeu.current_player,
+                           1,
+                           partie->joueur2->pseudo,
+                           partie->joueur1->pseudo);
+
     envoyer_message(partie->joueur1->fd, ui_j1);
     envoyer_message(partie->joueur2->fd, ui_j2);
 }
 
 // Jouer un coup
-void jouer_coup(joueur_t *joueur, int maison) {
+void jouer_coup(joueur_t *joueur, int maison)
+{
     partie_t *partie = trouver_partie_joueur(joueur);
-    if (!partie) {
+    if (!partie)
+    {
         envoyer_message(joueur->fd, "Vous n'êtes pas dans une partie!\n");
         return;
     }
-    
+
     // Vérifier que c'est au tour du joueur
     int joueur_num = (partie->joueur1 == joueur) ? 0 : 1;
-    if (partie->jeu.current_player != joueur_num) {
+    if (partie->jeu.current_player != joueur_num)
+    {
         envoyer_message(joueur->fd, "Ce n'est pas votre tour!\n");
         return;
     }
-    
+
     // Tenter le coup
-    if (!awale_move(&partie->jeu, maison)) {
+    if (!awale_move(&partie->jeu, maison))
+    {
         envoyer_message(joueur->fd, "Coup invalide (maison vide ou règle non respectée). Réessayez.\n");
         envoyer_plateau_aux_joueurs(partie);
         return;
     }
-    
+
     // Coup accepté, envoyer le nouveau plateau
     envoyer_plateau_aux_joueurs(partie);
-    
+
     // Vérifier fin de partie
-    if (awale_is_game_over(&partie->jeu)) {
+    if (awale_is_game_over(&partie->jeu))
+    {
         char endmsg[512];
         const char *resultmsg;
-        
-        if (partie->jeu.score[0] > partie->jeu.score[1]) {
+
+        if (partie->jeu.score[0] > partie->jeu.score[1])
+        {
             resultmsg = partie->joueur1->pseudo;
-        } else if (partie->jeu.score[1] > partie->jeu.score[0]) {
+        }
+        else if (partie->jeu.score[1] > partie->jeu.score[0])
+        {
             resultmsg = partie->joueur2->pseudo;
-        } else {
+        }
+        else
+        {
             resultmsg = "Égalité";
         }
-        
-        snprintf(endmsg, sizeof(endmsg), 
-                "Partie terminée!\nScores: %s=%d, %s=%d\nRésultat: %s gagne!\n",
-                partie->joueur1->pseudo, partie->jeu.score[0],
-                partie->joueur2->pseudo, partie->jeu.score[1],
-                resultmsg);
-        
+
+        snprintf(endmsg, sizeof(endmsg),
+                 "Partie terminée!\nScores: %s=%d, %s=%d\nRésultat: %s gagne!\n",
+                 partie->joueur1->pseudo, partie->jeu.score[0],
+                 partie->joueur2->pseudo, partie->jeu.score[1],
+                 resultmsg);
+
         envoyer_message(partie->joueur1->fd, endmsg);
         envoyer_message(partie->joueur2->fd, endmsg);
-        
+
         terminer_partie(partie);
     }
 }
 
 // Terminer une partie
-void terminer_partie(partie_t *partie) {
+void terminer_partie(partie_t *partie)
+{
     pthread_mutex_lock(&mutex_parties);
-    
+
     partie->joueur1->id_partie = -1;
     partie->joueur2->id_partie = -1;
     partie->en_cours = false;
     nb_parties_actives--;
-    
+
     pthread_mutex_unlock(&mutex_parties);
 }
-
-
 
 // ----------------- Le grand menu des commandes
 void menu(joueur_t *joueur)
@@ -484,6 +598,14 @@ void menu(joueur_t *joueur)
         else if (strcmp(commande, "DEFI") == 0)
         {
             gerer_defi(joueur, buffer);
+        }
+        else if (strcmp(commande, "ACCEPTER") == 0)
+        {
+            gerer_accepter(joueur);
+        }
+        else if (strcmp(commande, "REFUSER") == 0)
+        {
+            gerer_refuser(joueur);
         }
         else if (strcmp(commande, "JOUER") == 0)
         {
@@ -587,9 +709,9 @@ int main(int argc, char **argv)
         int *socket_client = malloc(sizeof(int));
         *socket_client = newsockfd;
 
-        //c'est ici qu'on crée le thread pour gérer le client et qu'on appelle gerer_client
+        // c'est ici qu'on crée le thread pour gérer le client et qu'on appelle gerer_client
         pthread_t thread_id;
-        if (pthread_create(&thread_id, NULL, gerer_client, socket_client) != 0) 
+        if (pthread_create(&thread_id, NULL, gerer_client, socket_client) != 0)
         {
             perror("erreur lors de la création du thread");
             close(newsockfd);
