@@ -62,6 +62,7 @@ joueur_t *trouver_joueur_par_pseudo(const char *pseudo); //très utile
 
 // Gestion defi d'un joueur par un autre
 void afficher_joueurs_en_ligne(joueur_t *joueur);
+
 void gerer_defi(joueur_t *joueur, char *buffer); //gère la demande de défi
 void gerer_accepter(joueur_t *joueur);
 void gerer_refuser(joueur_t *joueur);
@@ -72,7 +73,9 @@ void jouer_coup(joueur_t *joueur, int maison);
 void envoyer_plateau_aux_joueurs(partie_t *partie); //pq prend pas message : on avait déjà codé l'affichage directement dans Awale.c avant de savoir qu'on passerait par un menu
 void terminer_partie(partie_t *partie);
 
+// Gestion de l'observation d'un plateau
 partie_t *trouver_partie_joueur(joueur_t *joueur);
+void afficher_parties_en_cours(joueur_t *joueur);
 
 void menu(joueur_t *joueur);
 
@@ -190,7 +193,8 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
                 envoyer_message(joueur->fd, "Commandes disponibles:\n"
                                         "DECO - Se déconnecter\n"
                                         "HELP - Afficher cette aide\n"
-                                        "LISTE - Lister les joueurs en ligne\n"
+                                        "LISTEJ - Lister les joueurs en ligne\n"
+                                        "LISTEP - Lister les parties en cours\n"
                                         "DEFI <pseudo> - Défier un joueur\n"
                                         "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
     printf("Joueur connecté: %s\n", pseudo);
@@ -268,6 +272,8 @@ void *gerer_client(void *arg)
     return NULL;
 }
 
+
+
 //-------------- Partie defi d'un joueur par un autre et commandes lors de la partie
 // la fonction est plutot clair je dirais
 void afficher_joueurs_en_ligne(joueur_t *joueur)
@@ -279,13 +285,19 @@ void afficher_joueurs_en_ligne(joueur_t *joueur)
 
     for (int i = 0; i < MAX_JOUEURS; i++)
     {
-        if (joueurs[i].en_ligne && strcmp(joueurs[i].pseudo, joueur->pseudo) != 0)
+        if (joueurs[i].en_ligne)
         {
             strcat(message, "  - ");
             strcat(message, joueurs[i].pseudo);
+            //affiche si le joueur est en partie pour savoir à qui on peut envoyer un défi
             if (joueurs[i].id_partie != -1)
             {
                 strcat(message, " (en partie)");
+            }
+            //affiche si c'est le joueur qui a demandé la liste
+            if (strcmp(joueurs[i].pseudo, joueur->pseudo) == 0)
+            {
+                strcat(message, " (c'est toi !)");
             }
             strcat(message, "\n");
             count++;
@@ -458,15 +470,7 @@ void gerer_refuser(joueur_t *joueur)
     envoyer_message(joueur->fd, "Vous avez refusé le défi.\n");
 }
 
-// Trouver la partie d'un joueur
-partie_t *trouver_partie_joueur(joueur_t *joueur)
-{
-    if (joueur->id_partie == -1)
-    {
-        return NULL;
-    }
-    return &parties[joueur->id_partie];
-}
+
 
 // Envoyer le plateau aux deux joueurs
 void envoyer_plateau_aux_joueurs(partie_t *partie)
@@ -567,6 +571,47 @@ void terminer_partie(partie_t *partie)
     pthread_mutex_unlock(&mutex_parties);
 }
 
+
+
+// ----------------- La Gestion d'observation d'un plateau
+// Trouver la partie d'un joueur
+partie_t *trouver_partie_joueur(joueur_t *joueur)
+{
+    if (joueur->id_partie == -1)
+    {
+        return NULL;
+    }
+    return &parties[joueur->id_partie];
+}
+
+// Afficher les parties en cours
+void afficher_parties_en_cours(joueur_t *joueur)
+{
+    pthread_mutex_lock(&mutex_parties);
+
+    char message[TAILLE_BUFFER] = "Parties en cours:\n";
+    int nb = 0;
+    for (int i =0; i< MAX_NB_PARTIES; i++)
+    {
+        if (parties[i].en_cours)
+        {
+            char buf[128];  //on embellit un peu l'affichage en précisant qui contre qui
+            snprintf(buf, sizeof(buf), "  - Partie %d: %s vs %s\n",
+                     parties[i].id,
+                     parties[i].joueur1->pseudo,
+                     parties[i].joueur2->pseudo);
+            strcat(message, buf);
+            nb++;
+        }
+    }
+
+    if (nb == 0)
+    {
+        strcat(message, "  Aucune partie en cours.\n");
+    }
+    envoyer_message(joueur->fd, message);
+    pthread_mutex_unlock(&mutex_parties);
+}
 // ----------------- Le grand menu des commandes
 void menu(joueur_t *joueur)
 {
@@ -600,13 +645,18 @@ void menu(joueur_t *joueur)
             envoyer_message(joueur->fd, "Commandes disponibles:\n"
                                         "DECO - Se déconnecter\n"
                                         "HELP - Afficher cette aide\n"
-                                        "LISTE - Lister les joueurs en ligne\n"
+                                        "LISTEJ - Lister les joueurs en ligne\n"
+                                        "LISTEP - Lister les parties en cours\n"
                                         "DEFI <pseudo> - Défier un joueur\n"
                                         "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
         }
-        else if (strcmp(commande, "LISTE") == 0)
+        else if (strcmp(commande, "LISTEJ") == 0)
         {
             afficher_joueurs_en_ligne(joueur);
+        }
+        else if (strcmp(commande, "LISTEP") == 0)
+        {
+            afficher_parties_en_cours(joueur);
         }
         else if (strcmp(commande, "DEFI") == 0)
         {
