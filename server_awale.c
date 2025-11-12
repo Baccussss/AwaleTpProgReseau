@@ -82,8 +82,14 @@ void quitter_observation(joueur_t *joueur);
 
 void menu(joueur_t *joueur);
 
-// Prototype pour le chat privé (déclaration)
+// Déclaration pour le chat privé (déclaration)
 void gerer_chat_prive(joueur_t *emetteur, char *message);
+
+// Déclaration pour la commande BIO
+void gerer_bio(joueur_t *joueur, char *buffer);
+
+// Déclaration pour la commande INFO
+void gerer_info(joueur_t *joueur, char *buffer);
 
 //-------------- Partie initialisation du serveur et gestion des sockets
 // Piqué sur les exemples du TP1
@@ -197,15 +203,17 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     // on envoie les commandes de menu tout de suite et non pas avec la fonction menu
     // car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
     envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                        "DECO - Se déconnecter\n"
-                                        "HELP - Afficher cette aide\n"
-                                        "LISTEJ - Lister les joueurs en ligne\n"
-                                        "LISTEP - Lister les parties en cours\n"
-                                        "DEFI <pseudo> - Défier un joueur\n"
-                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                        "OBSERVER <id_partie> - Observer une partie en cours\n"
-                                        "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                        "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                "DECO - Se déconnecter\n"
+                                "HELP - Afficher cette aide\n"
+                                "LISTEJ - Lister les joueurs en ligne\n"
+                                "LISTEP - Lister les parties en cours\n"
+                                "DEFI <pseudo> - Défier un joueur\n"
+                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                "BIO <texte> - Écrire votre bio\n"
+                                "INFO <pseudo> - Voir pseudo et bio d'un joueur\n"
+                                "OBSERVER <id_partie> - Observer une partie en cours\n"
+                                "QUITTEROBS - Quitter l'observation d'une partie\n"
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
     printf("Joueur connecté: %s\n", pseudo);
 
     pthread_mutex_unlock(&mutex_joueurs);
@@ -481,12 +489,12 @@ void gerer_refuser(joueur_t *joueur)
 void envoyer_plateau_aux_joueurs(partie_t *partie)
 {
     char ui_j1[1024], ui_j2[1024], ui_obs[1024];
-    //envoie aux joueurs
+    // envoie aux joueurs
     afficher_interface_jeu(ui_j1, sizeof(ui_j1),
                            partie->jeu.board,
                            partie->jeu.score,
                            partie->jeu.current_player,
-                           0,   //POV joueur 1
+                           0, // POV joueur 1
                            partie->joueur1->pseudo,
                            partie->joueur2->pseudo);
 
@@ -494,19 +502,17 @@ void envoyer_plateau_aux_joueurs(partie_t *partie)
                            partie->jeu.board,
                            partie->jeu.score,
                            partie->jeu.current_player,
-                           1,  //POV joueur 2
+                           1, // POV joueur 2
                            partie->joueur2->pseudo,
                            partie->joueur1->pseudo);
-    
+
     afficher_interface_jeu(ui_obs, sizeof(ui_obs),
                            partie->jeu.board,
                            partie->jeu.score,
                            partie->jeu.current_player,
-                           -1, //POV observateur
+                           -1, // POV observateur
                            partie->joueur1->pseudo,
                            partie->joueur2->pseudo);
-    
-    
 
     envoyer_message(partie->joueur1->fd, ui_j1);
     envoyer_message(partie->joueur2->fd, ui_j2);
@@ -637,7 +643,7 @@ void afficher_parties_en_cours(joueur_t *joueur)
     pthread_mutex_unlock(&mutex_parties);
 }
 
-//OBSERVER une partie
+// OBSERVER une partie
 void observer_partie(joueur_t *joueur, char *buffer)
 {
     int id_partie;
@@ -647,7 +653,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
         return;
     }
 
-    pthread_mutex_lock(&mutex_parties); //on fait des modif sur les parties donc on lock encore
+    pthread_mutex_lock(&mutex_parties); // on fait des modif sur les parties donc on lock encore
     if (id_partie < 0 || id_partie >= MAX_NB_PARTIES || !parties[id_partie].en_cours)
     {
         pthread_mutex_unlock(&mutex_parties);
@@ -666,7 +672,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
             break;
         }
     }
-    //si il y en a trop
+    // si il y en a trop
     if (obs_index == -1)
     {
         pthread_mutex_unlock(&mutex_parties);
@@ -677,7 +683,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
     // ajouter l'observateur à la partie
     snprintf(partie->observateurs[obs_index], MAX_PSEUDO_LEN, "%s", joueur->pseudo);
     pthread_mutex_unlock(&mutex_parties);
-    //puis envoyer le plateau actuel de la partie (les prochains envois sont fait à chaque coup_joué dans jouer_coup)
+    // puis envoyer le plateau actuel de la partie (les prochains envois sont fait à chaque coup_joué dans jouer_coup)
     char msg[128];
     snprintf(msg, sizeof(msg), "Vous observez la partie %d de %s vs %s.\n", partie->id, partie->joueur1->pseudo, partie->joueur2->pseudo);
     envoyer_message(joueur->fd, msg);
@@ -691,7 +697,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
                            partie->joueur2->pseudo);
     envoyer_message(joueur->fd, ui_obs);
 }
-//QUITTER OBSERVATION
+// QUITTER OBSERVATION
 void quitter_observation(joueur_t *joueur)
 {
     pthread_mutex_lock(&mutex_parties);
@@ -708,15 +714,15 @@ void quitter_observation(joueur_t *joueur)
                     pthread_mutex_unlock(&mutex_parties);
                     envoyer_message(joueur->fd, "Vous avez quitté l'observation de la partie.\n\n");
                     envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                        "DECO - Se déconnecter\n"
-                                        "HELP - Afficher cette aide\n"
-                                        "LISTEJ - Lister les joueurs en ligne\n"
-                                        "LISTEP - Lister les parties en cours\n"
-                                        "DEFI <pseudo> - Défier un joueur\n"
-                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                        "OBSERVER <id_partie> - Observer une partie en cours\n"
-                                        "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                        "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                                "DECO - Se déconnecter\n"
+                                                "HELP - Afficher cette aide\n"
+                                                "LISTEJ - Lister les joueurs en ligne\n"
+                                                "LISTEP - Lister les parties en cours\n"
+                                                "DEFI <pseudo> - Défier un joueur\n"
+                                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                                "OBSERVER <id_partie> - Observer une partie en cours\n"
+                                                "QUITTEROBS - Quitter l'observation d'une partie\n"
+                                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
                     return;
                 }
             }
@@ -726,7 +732,6 @@ void quitter_observation(joueur_t *joueur)
     envoyer_message(joueur->fd, "Vous n'observez aucune partie.\n");
     return;
 }
-
 
 // ----------------- Chat privé
 // message attendu: débutant par "<pseudo> <texte...>" (ex: appel depuis menu: gerer_chat_prive(joueur, buffer+4))
@@ -749,7 +754,8 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
         return;
     }
     pos += strlen(pseudo_cible);
-    while (*pos == ' ') pos++;
+    while (*pos == ' ')
+        pos++;
     if (*pos == '\0')
     {
         envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n");
@@ -775,8 +781,61 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
     envoyer_message(emetteur->fd, "Message privé envoyé.\n");
 }
 
+// ----------------- Gérer la bio d'un joueur
+// buffer attendu: "BIO <texte>" ou on peut passer directement le texte
+void gerer_bio(joueur_t *joueur, char *buffer)
+{
+    char *texte = buffer;
+    if (strncmp(buffer, "BIO ", 4) == 0)
+        texte = buffer + 4;
+    while (*texte == ' ')
+        texte++;
+
+    if (*texte == '\0')
+    {
+        envoyer_message(joueur->fd, "Format: BIO <texte>\n");
+        return;
+    }
+
+    pthread_mutex_lock(&mutex_joueurs);
+    strncpy(joueur->bio, texte, MAX_BIO_LEN - 1);
+    joueur->bio[MAX_BIO_LEN - 1] = '\0';
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    envoyer_message(joueur->fd, "Bio mise à jour.\n");
+}
+
+// ----------------- Gérer l'affichage d'info d'un joueur (pseudo + bio)
+void gerer_info(joueur_t *joueur, char *buffer)
+{
+    char pseudo_cible[MAX_PSEUDO_LEN];
+    if (sscanf(buffer, "INFO %31s", pseudo_cible) != 1)
+    {
+        envoyer_message(joueur->fd, "Format: INFO <pseudo>\n");
+        return;
+    }
+
+    pthread_mutex_lock(&mutex_joueurs);
+    joueur_t *dest = trouver_joueur_par_pseudo(pseudo_cible);
+    if (!dest)
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Joueur non trouvé.\n");
+        return;
+    }
+
+    char buf[TAILLE_BUFFER];
+    snprintf(buf, sizeof(buf), "Pseudo: %s\nBio: %s\nStatut: %s\n",
+             dest->pseudo,
+             (dest->bio[0] != '\0') ? dest->bio : "(aucune bio)",
+             dest->en_ligne ? "en ligne" : "hors ligne");
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    envoyer_message(joueur->fd, buf);
+}
+
 //---- -----------LA COMMANDE SECRETE shrek
-void shrek (joueur_t *joueur, char *buffer)
+void shrek(joueur_t *joueur, char *buffer)
 {
     char pseudo_destinataire[MAX_PSEUDO_LEN];
     const char *shrek = "   ⢀⡴⠑⡄⠀⠀⠀⠀⠀⠀⠀⣀⣀⣤⣤⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ \n"
@@ -793,7 +852,7 @@ void shrek (joueur_t *joueur, char *buffer)
                         "   ⠀⠀⠀⠀⠀⠀⣀⣀⣈⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀⠀⠀⠀⠀⠀⠀ \n"
                         "   ⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀ \n"
                         "   ⠀⠀⠀⠀⠀⠀⠀⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀ \n"
-                        "   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠻⠿⠿⠿⠿⠛⠉\n" ;
+                        "   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠻⠿⠿⠿⠿⠛⠉\n";
 
     // Si aucun pseudo fourni, envoyer à soi-même
     if (sscanf(buffer, "SHREK %s", pseudo_destinataire) != 1)
@@ -801,11 +860,11 @@ void shrek (joueur_t *joueur, char *buffer)
         envoyer_message(joueur->fd, shrek);
         return;
     }
-    
+
     // Chercher le destinataire
     pthread_mutex_lock(&mutex_joueurs);
     joueur_t *destinataire = trouver_joueur_par_pseudo(pseudo_destinataire);
-    
+
     if (destinataire && destinataire->en_ligne)
     {
         // Envoyer au destinataire
@@ -875,14 +934,31 @@ void menu(joueur_t *joueur)
         {
             gerer_defi(joueur, buffer);
         }
-        
-        else if (strcmp(commande, "ACCEPTER") == 0)
-        {
-            gerer_accepter(joueur);
-        }
         else if (strcmp(commande, "REFUSER") == 0)
         {
             gerer_refuser(joueur);
+        }
+        else if (strcmp(commande, "BIO") == 0)
+        {
+            if (len <= 4)
+            {
+                envoyer_message(joueur->fd, "Format: BIO <texte>\n");
+            }
+            else
+            {
+                gerer_bio(joueur, buffer);
+            }
+        }
+        else if (strcmp(commande, "INFO") == 0)
+        {
+            if (len <= 5)
+            {
+                envoyer_message(joueur->fd, "Format: INFO <pseudo>\n");
+            }
+            else
+            {
+                gerer_info(joueur, buffer);
+            }
         }
         else if (strcmp(commande, "JOUER") == 0)
         {
@@ -919,15 +995,14 @@ void menu(joueur_t *joueur)
         }
         else if (strcmp(commande, "SHREK") == 0)
         {
-            shrek(joueur,buffer);
+            shrek(joueur, buffer);
         }
-        
 
         else
         {
             envoyer_message(joueur->fd, "Commande inconnue. Tapez HELP pour l'aide.\n");
         }
-        
+
         memset(buffer, 0, sizeof(buffer));
     }
 }
