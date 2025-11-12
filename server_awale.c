@@ -654,6 +654,54 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
     // accusé au sender
     envoyer_message(emetteur->fd, "Message privé envoyé.\n");
 }
+
+//---- -----------LA COMMANDE SECRETE shrek
+void shrek (joueur_t *joueur, char *buffer)
+{
+    char pseudo_destinataire[MAX_PSEUDO_LEN];
+    const char *shrek = "   ⢀⡴⠑⡄⠀⠀⠀⠀⠀⠀⠀⣀⣀⣤⣤⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠸⡇⠀⠿⡀⠀⠀⠀⣀⡴⢿⣿⣿⣿⣿⣿⣿⣿⣷⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠑⢄⣠⠾⠁⣀⣄⡈⠙⣿⣿⣿⣿⣿⣿⣿⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⢀⡀⠁⠀⠀⠈⠙⠛⠂⠈⣿⣿⣿⣿⣿⠿⡿⢿⣆⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⢀⡾⣁⣀⠀⠴⠂⠙⣗⡀⠀⢻⣿⣿⠭⢤⣴⣦⣤⣹⠀⠀⠀⢀⢴⣶⣆ \n"
+                        "   ⠀⠀⢀⣾⣿⣿⣿⣷⣮⣽⣾⣿⣥⣴⣿⣿⡿⢂⠔⢚⡿⢿⣿⣦⣴⣾⠁⠸⣼⡿ \n"
+                        "   ⠀⢀⡞⠁⠙⠻⠿⠟⠉⠀⠛⢹⣿⣿⣿⣿⣿⣌⢤⣼⣿⣾⣿⡟⠉⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⣾⣷⣶⠇⠀⠀⣤⣄⣀⡀⠈⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠉⠈⠉⠀⠀⢦⡈⢻⣿⣿⣿⣶⣶⣶⣶⣤⣽⡹⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠀⠀⠀⠉⠲⣽⡻⢿⣿⣿⣿⣿⣿⣿⣷⣜⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣷⣶⣮⣭⣽⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠀⠀⣀⣀⣈⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠀⠀⠀⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀ \n"
+                        "   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠻⠿⠿⠿⠿⠛⠉\n" ;
+
+    // Si aucun pseudo fourni, envoyer à soi-même
+    if (sscanf(buffer, "SHREK %s", pseudo_destinataire) != 1)
+    {
+        envoyer_message(joueur->fd, shrek);
+        return;
+    }
+    
+    // Chercher le destinataire
+    pthread_mutex_lock(&mutex_joueurs);
+    joueur_t *destinataire = trouver_joueur_par_pseudo(pseudo_destinataire);
+    
+    if (destinataire && destinataire->en_ligne)
+    {
+        // Envoyer au destinataire
+        envoyer_message(destinataire->fd, shrek);
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Shrek envoyé avec succès!\n");
+    }
+    else
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        // Joueur non trouvé ou hors ligne, envoyer à soi-même
+        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne. C'est toi qui prends le shrek:\n");
+        envoyer_message(joueur->fd, shrek);
+    }
+}
+
 // ----------------- Le grand menu des commandes
 void menu(joueur_t *joueur)
 {
@@ -738,8 +786,12 @@ void menu(joueur_t *joueur)
                 envoyer_message(joueur->fd, "Format invalide. Utiliser: JOUER <0-5>\n");
             }
         }
-
+        else if (strcmp(commande, "SHREK") == 0)
+        {
+            shrek(joueur,buffer);
+        }
         
+
         else
         {
             envoyer_message(joueur->fd, "Commande inconnue. Tapez HELP pour l'aide.\n");
