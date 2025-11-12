@@ -53,18 +53,18 @@ void *gerer_client(void *arg);
 joueur_t *gerer_connexion(char *pseudo, int socket_client);
 void gerer_deconnexion(joueur_t *joueur);
 int envoyer_message(int sockfd, const char *message);
-joueur_t *trouver_joueur_par_pseudo(const char *pseudo);
+joueur_t *trouver_joueur_par_pseudo(const char *pseudo); //très utile
 
 //Gestion defi d'un joueur par un autre
 void afficher_joueurs_en_ligne(joueur_t *joueur);
-void gerer_defi(joueur_t *joueur, char *buffer);
+void gerer_defi(joueur_t *joueur, char *buffer); //gère la demande de défi
 void gerer_accepter(joueur_t *joueur);
 void gerer_refuser(joueur_t *joueur);
 partie_t *creer_partie(joueur_t *j1, joueur_t *j2);
 
 // Gestion des commandes lors de la partie
 void jouer_coup(joueur_t *joueur, int maison);
-void envoyer_plateau_aux_joueurs(partie_t *partie);
+void envoyer_plateau_aux_joueurs(partie_t *partie); //pq prend pas message : on avait déjà codé l'affichage directement dans Awale.c avant de savoir qu'on passerait par un menu
 void terminer_partie(partie_t *partie);
 
 partie_t *trouver_partie_joueur(joueur_t *joueur);
