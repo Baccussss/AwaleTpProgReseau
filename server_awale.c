@@ -197,15 +197,15 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     // on envoie les commandes de menu tout de suite et non pas avec la fonction menu
     // car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
     envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                "DECO - Se déconnecter\n"
-                                "HELP - Afficher cette aide\n"
-                                "LISTEJ - Lister les joueurs en ligne\n"
-                                "LISTEP - Lister les parties en cours\n"
-                                "DEFI <pseudo> - Défier un joueur\n"
-                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                "OBS <id_partie> - Observer une partie en cours\n"
-                                "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                        "DECO - Se déconnecter\n"
+                                        "HELP - Afficher cette aide\n"
+                                        "LISTEJ - Lister les joueurs en ligne\n"
+                                        "LISTEP - Lister les parties en cours\n"
+                                        "DEFI <pseudo> - Défier un joueur\n"
+                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                        "OBSERVER <id_partie> - Observer une partie en cours\n"
+                                        "QUITTEROBS - Quitter l'observation d'une partie\n"
+                                        "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
     printf("Joueur connecté: %s\n", pseudo);
 
     pthread_mutex_unlock(&mutex_joueurs);
@@ -714,7 +714,7 @@ void quitter_observation(joueur_t *joueur)
                                         "LISTEP - Lister les parties en cours\n"
                                         "DEFI <pseudo> - Défier un joueur\n"
                                         "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                        "OBS <id_partie> - Observer une partie en cours\n"
+                                        "OBSERVER <id_partie> - Observer une partie en cours\n"
                                         "QUITTEROBS - Quitter l'observation d'une partie\n"
                                         "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
                     return;
@@ -859,7 +859,7 @@ void menu(joueur_t *joueur)
                                         "LISTEP - Lister les parties en cours\n"
                                         "DEFI <pseudo> - Défier un joueur\n"
                                         "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                        "OBS <id_partie> - Observer une partie en cours\n"
+                                        "OBSERVER <id_partie> - Observer une partie en cours\n"
                                         "QUITTEROBS - Quitter l'observation d'une partie\n"
                                         "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
         }
@@ -896,7 +896,7 @@ void menu(joueur_t *joueur)
                 envoyer_message(joueur->fd, "Format invalide. Utiliser: JOUER <0-5>\n");
             }
         }
-        else if (strcmp(commande, "OBS") == 0)
+        else if (strcmp(commande, "OBSERVER") == 0)
         {
             observer_partie(joueur, buffer);
         }
