@@ -9,9 +9,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
-#include <pthread.h> 
-//utilisation de threads pour que le server soit pas ralentit par des clients lents
-//chaque client est géré dans un thread séparé de manière independante
+#include <pthread.h>
+// utilisation de threads pour que le server soit pas ralentit par des clients lents
+// chaque client est géré dans un thread séparé de manière independante
 
 #include "awale.h" // Awale + afficher_interface_jeu
 
@@ -44,13 +44,13 @@ typedef struct
 
 // ------------- Initialisation des variables globales
 joueur_t joueurs[MAX_JOUEURS];
-pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;  
-//le mutex permet de limiter l'accès concurrent aux données des joueurs (quand on touche le tableau joueurs sur plusieurs lignes)
-// pour éviter les conflits
+pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;
+// le mutex permet de limiter l'accès concurrent aux données des joueurs (quand on touche le tableau joueurs sur plusieurs lignes)
+//  pour éviter les conflits
 
 partie_t parties[MAX_NB_PARTIES];
 int nb_parties_actives = 0;
-pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER; //mutex aussi pour les parties
+pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER; // mutex aussi pour les parties
 
 // ------------ Prototypes des fonctions
 // Gestion des sockets et des clients
@@ -58,19 +58,18 @@ void *gerer_client(void *arg);
 joueur_t *gerer_connexion(char *pseudo, int socket_client);
 void gerer_deconnexion(joueur_t *joueur);
 int envoyer_message(int sockfd, const char *message);
-joueur_t *trouver_joueur_par_pseudo(const char *pseudo); //très utile
+joueur_t *trouver_joueur_par_pseudo(const char *pseudo); // très utile
 
 // Gestion defi d'un joueur par un autre
 void afficher_joueurs_en_ligne(joueur_t *joueur);
-
-void gerer_defi(joueur_t *joueur, char *buffer); //gère la demande de défi
+void gerer_defi(joueur_t *joueur, char *buffer); // gère la demande de défi
 void gerer_accepter(joueur_t *joueur);
 void gerer_refuser(joueur_t *joueur);
 partie_t *creer_partie(joueur_t *j1, joueur_t *j2);
 
 // Gestion des commandes lors de la partie
 void jouer_coup(joueur_t *joueur, int maison);
-void envoyer_plateau_aux_joueurs(partie_t *partie); //pq prend pas message : on avait déjà codé l'affichage directement dans Awale.c avant de savoir qu'on passerait par un menu
+void envoyer_plateau_aux_joueurs(partie_t *partie); // pq prend pas message : on avait déjà codé l'affichage directement dans Awale.c avant de savoir qu'on passerait par un menu
 void terminer_partie(partie_t *partie);
 
 // Gestion de l'observation d'un plateau
@@ -78,6 +77,9 @@ partie_t *trouver_partie_joueur(joueur_t *joueur);
 void afficher_parties_en_cours(joueur_t *joueur);
 
 void menu(joueur_t *joueur);
+
+// Prototype pour le chat privé (déclaration)
+void gerer_chat_prive(joueur_t *emetteur, char *message);
 
 //-------------- Partie initialisation du serveur et gestion des sockets
 // Piqué sur les exemples du TP1
@@ -188,15 +190,15 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     joueur->demande_defi_depuis[0] = '\0';
 
     envoyer_message(socket_client, "Connexion réussie!\n");
-    //on envoie les commandes de menu tout de suite et non pas avec la fonction menu 
-                //car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
-                envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                        "DECO - Se déconnecter\n"
-                                        "HELP - Afficher cette aide\n"
-                                        "LISTEJ - Lister les joueurs en ligne\n"
-                                        "LISTEP - Lister les parties en cours\n"
-                                        "DEFI <pseudo> - Défier un joueur\n"
-                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
+    // on envoie les commandes de menu tout de suite et non pas avec la fonction menu
+    // car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
+    envoyer_message(joueur->fd, "Commandes disponibles:\n"
+                                "DECO - Se déconnecter\n"
+                                "HELP - Afficher cette aide\n"
+                                "LISTE - Lister les joueurs en ligne\n"
+                                "DEFI <pseudo> - Défier un joueur\n"
+                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
     printf("Joueur connecté: %s\n", pseudo);
 
     pthread_mutex_unlock(&mutex_joueurs);
@@ -272,8 +274,6 @@ void *gerer_client(void *arg)
     return NULL;
 }
 
-
-
 //-------------- Partie defi d'un joueur par un autre et commandes lors de la partie
 // la fonction est plutot clair je dirais
 void afficher_joueurs_en_ligne(joueur_t *joueur)
@@ -289,12 +289,12 @@ void afficher_joueurs_en_ligne(joueur_t *joueur)
         {
             strcat(message, "  - ");
             strcat(message, joueurs[i].pseudo);
-            //affiche si le joueur est en partie pour savoir à qui on peut envoyer un défi
+            // affiche si le joueur est en partie pour savoir à qui on peut envoyer un défi
             if (joueurs[i].id_partie != -1)
             {
                 strcat(message, " (en partie)");
             }
-            //affiche si c'est le joueur qui a demandé la liste
+            // affiche si c'est le joueur qui a demandé la liste
             if (strcmp(joueurs[i].pseudo, joueur->pseudo) == 0)
             {
                 strcat(message, " (c'est toi !)");
@@ -470,8 +470,6 @@ void gerer_refuser(joueur_t *joueur)
     envoyer_message(joueur->fd, "Vous avez refusé le défi.\n");
 }
 
-
-
 // Envoyer le plateau aux deux joueurs
 void envoyer_plateau_aux_joueurs(partie_t *partie)
 {
@@ -571,8 +569,6 @@ void terminer_partie(partie_t *partie)
     pthread_mutex_unlock(&mutex_parties);
 }
 
-
-
 // ----------------- La Gestion d'observation d'un plateau
 // Trouver la partie d'un joueur
 partie_t *trouver_partie_joueur(joueur_t *joueur)
@@ -591,11 +587,11 @@ void afficher_parties_en_cours(joueur_t *joueur)
 
     char message[TAILLE_BUFFER] = "Parties en cours:\n";
     int nb = 0;
-    for (int i =0; i< MAX_NB_PARTIES; i++)
+    for (int i = 0; i < MAX_NB_PARTIES; i++)
     {
         if (parties[i].en_cours)
         {
-            char buf[128];  //on embellit un peu l'affichage en précisant qui contre qui
+            char buf[128]; // on embellit un peu l'affichage en précisant qui contre qui
             snprintf(buf, sizeof(buf), "  - Partie %d: %s vs %s\n",
                      parties[i].id,
                      parties[i].joueur1->pseudo,
@@ -611,6 +607,52 @@ void afficher_parties_en_cours(joueur_t *joueur)
     }
     envoyer_message(joueur->fd, message);
     pthread_mutex_unlock(&mutex_parties);
+}
+// ----------------- Chat privé
+// message attendu: débutant par "<pseudo> <texte...>" (ex: appel depuis menu: gerer_chat_prive(joueur, buffer+4))
+void gerer_chat_prive(joueur_t *emetteur, char *message)
+{
+    char pseudo_cible[MAX_PSEUDO_LEN];
+
+    // extraire le pseudo cible
+    if (sscanf(message, "%31s", pseudo_cible) != 1)
+    {
+        envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n");
+        return;
+    }
+
+    // trouver le texte après le pseudo
+    char *pos = strstr(message, pseudo_cible);
+    if (!pos)
+    {
+        envoyer_message(emetteur->fd, "Format invalide.\n");
+        return;
+    }
+    pos += strlen(pseudo_cible);
+    while (*pos == ' ') pos++;
+    if (*pos == '\0')
+    {
+        envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n");
+        return;
+    }
+
+    pthread_mutex_lock(&mutex_joueurs);
+    joueur_t *dest = trouver_joueur_par_pseudo(pseudo_cible);
+    if (!dest || !dest->en_ligne || dest->fd == -1)
+    {
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(emetteur->fd, "Joueur non trouvé ou hors ligne.\n");
+        return;
+    }
+
+    // construire et envoyer le message privé
+    char buf[TAILLE_BUFFER];
+    snprintf(buf, sizeof(buf), "[%s -> vous] %s\n", emetteur->pseudo, pos);
+    envoyer_message(dest->fd, buf);
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    // accusé au sender
+    envoyer_message(emetteur->fd, "Message privé envoyé.\n");
 }
 // ----------------- Le grand menu des commandes
 void menu(joueur_t *joueur)
@@ -648,7 +690,8 @@ void menu(joueur_t *joueur)
                                         "LISTEJ - Lister les joueurs en ligne\n"
                                         "LISTEP - Lister les parties en cours\n"
                                         "DEFI <pseudo> - Défier un joueur\n"
-                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
+                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                        "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
         }
         else if (strcmp(commande, "LISTEJ") == 0)
         {
@@ -661,6 +704,19 @@ void menu(joueur_t *joueur)
         else if (strcmp(commande, "DEFI") == 0)
         {
             gerer_defi(joueur, buffer);
+        }
+        else if (strcmp(commande, "MSG") == 0)
+        {
+            // appeler le chat privé en passant la partie après "MSG "
+            // vérifier qu'il y a bien quelque chose après
+            if (len <= 4)
+            {
+                envoyer_message(joueur->fd, "Format: MSG <pseudo> <message>\n");
+            }
+            else
+            {
+                gerer_chat_prive(joueur, buffer + 4);
+            }
         }
         else if (strcmp(commande, "ACCEPTER") == 0)
         {
