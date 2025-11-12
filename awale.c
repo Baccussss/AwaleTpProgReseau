@@ -115,8 +115,7 @@ void afficher_interface_jeu(char *out, size_t out_sz,
 {
     int top[6], bottom[6];
     const char *top_name, *bottom_name;
-
-    if (current_POV == 0)
+    if (current_POV == 0 || current_POV == -1) // POV joueur 1 ou observateur
     {
         for (int i = 0; i < 6; ++i)
         {
@@ -128,7 +127,7 @@ void afficher_interface_jeu(char *out, size_t out_sz,
     }
     else
     {
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < 6; ++i)// POV joueur 2
         {
             bottom[i] = board[6 + i]; // 6..11
             top[i] = board[5 - i];    // 5..0
@@ -138,7 +137,11 @@ void afficher_interface_jeu(char *out, size_t out_sz,
     }
 
     char msg[256];
-    if (current_player == current_POV)
+    if (current_POV == -1) // observateur
+    {
+        snprintf(msg, sizeof(msg), "C'est au tour de %s de jouer.\n", (current_player == 0) ? pov_name : other_name);
+    }
+    else if (current_player == current_POV)
     {
         snprintf(msg, sizeof(msg), "À vous de jouer (%s) — Choisissez une maison (0-5): JOUER <0-5>\n", pov_name);
     }

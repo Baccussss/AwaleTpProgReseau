@@ -21,6 +21,7 @@
 #define MAX_BIO_LEN 128
 #define TAILLE_BUFFER 1024
 #define MAX_NB_PARTIES 50
+#define MAX_OBSERVATEURS 10
 
 // Structure représentant un joueur
 typedef struct
@@ -39,6 +40,7 @@ typedef struct
     Awale jeu;
     joueur_t *joueur1;
     joueur_t *joueur2;
+    char observateurs[MAX_OBSERVATEURS][MAX_PSEUDO_LEN];
     bool en_cours;
 } partie_t;
 
@@ -75,6 +77,8 @@ void terminer_partie(partie_t *partie);
 // Gestion de l'observation d'un plateau
 partie_t *trouver_partie_joueur(joueur_t *joueur);
 void afficher_parties_en_cours(joueur_t *joueur);
+void observer_partie(joueur_t *joueur, char *buffer);
+void quitter_observation(joueur_t *joueur);
 
 void menu(joueur_t *joueur);
 
@@ -195,9 +199,12 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     envoyer_message(joueur->fd, "Commandes disponibles:\n"
                                 "DECO - Se déconnecter\n"
                                 "HELP - Afficher cette aide\n"
-                                "LISTE - Lister les joueurs en ligne\n"
+                                "LISTEJ - Lister les joueurs en ligne\n"
+                                "LISTEP - Lister les parties en cours\n"
                                 "DEFI <pseudo> - Défier un joueur\n"
                                 "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                "OBS <id_partie> - Observer une partie en cours\n"
+                                "QUITTEROBS - Quitter l'observation d'une partie\n"
                                 "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
     printf("Joueur connecté: %s\n", pseudo);
 
@@ -473,13 +480,13 @@ void gerer_refuser(joueur_t *joueur)
 // Envoyer le plateau aux deux joueurs
 void envoyer_plateau_aux_joueurs(partie_t *partie)
 {
-    char ui_j1[1024], ui_j2[1024];
-
+    char ui_j1[1024], ui_j2[1024], ui_obs[1024];
+    //envoie aux joueurs
     afficher_interface_jeu(ui_j1, sizeof(ui_j1),
                            partie->jeu.board,
                            partie->jeu.score,
                            partie->jeu.current_player,
-                           0,
+                           0,   //POV joueur 1
                            partie->joueur1->pseudo,
                            partie->joueur2->pseudo);
 
@@ -487,12 +494,33 @@ void envoyer_plateau_aux_joueurs(partie_t *partie)
                            partie->jeu.board,
                            partie->jeu.score,
                            partie->jeu.current_player,
-                           1,
+                           1,  //POV joueur 2
                            partie->joueur2->pseudo,
                            partie->joueur1->pseudo);
+    
+    afficher_interface_jeu(ui_obs, sizeof(ui_obs),
+                           partie->jeu.board,
+                           partie->jeu.score,
+                           partie->jeu.current_player,
+                           -1, //POV observateur
+                           partie->joueur1->pseudo,
+                           partie->joueur2->pseudo);
+    
+    
 
     envoyer_message(partie->joueur1->fd, ui_j1);
     envoyer_message(partie->joueur2->fd, ui_j2);
+    for (int i = 0; i < MAX_OBSERVATEURS; i++)
+    {
+        if (partie->observateurs[i][0] != '\0')
+        {
+            joueur_t *observateur = trouver_joueur_par_pseudo(partie->observateurs[i]);
+            if (observateur && observateur->en_ligne)
+            {
+                envoyer_message(observateur->fd, ui_obs);
+            }
+        }
+    }
 }
 
 // Jouer un coup
@@ -608,6 +636,98 @@ void afficher_parties_en_cours(joueur_t *joueur)
     envoyer_message(joueur->fd, message);
     pthread_mutex_unlock(&mutex_parties);
 }
+
+//OBSERVER une partie
+void observer_partie(joueur_t *joueur, char *buffer)
+{
+    int id_partie;
+    if (sscanf(buffer, "OBSERVER %d", &id_partie) != 1)
+    {
+        envoyer_message(joueur->fd, "Format invalide. Utiliser: OBSERVER <id_partie>\n");
+        return;
+    }
+
+    pthread_mutex_lock(&mutex_parties); //on fait des modif sur les parties donc on lock encore
+    if (id_partie < 0 || id_partie >= MAX_NB_PARTIES || !parties[id_partie].en_cours)
+    {
+        pthread_mutex_unlock(&mutex_parties);
+        envoyer_message(joueur->fd, "Partie non trouvée.\n");
+        return;
+    }
+
+    partie_t *partie = &parties[id_partie];
+    // vérifier s'il y a de la place pour un observateur
+    int obs_index = -1;
+    for (int i = 0; i < MAX_OBSERVATEURS; i++)
+    {
+        if (partie->observateurs[i][0] == '\0')
+        {
+            obs_index = i;
+            break;
+        }
+    }
+    //si il y en a trop
+    if (obs_index == -1)
+    {
+        pthread_mutex_unlock(&mutex_parties);
+        envoyer_message(joueur->fd, "Nombre maximum d'observateurs atteint pour cette partie.\n");
+        return;
+    }
+
+    // ajouter l'observateur à la partie
+    snprintf(partie->observateurs[obs_index], MAX_PSEUDO_LEN, "%s", joueur->pseudo);
+    pthread_mutex_unlock(&mutex_parties);
+    //puis envoyer le plateau actuel de la partie (les prochains envois sont fait à chaque coup_joué dans jouer_coup)
+    char msg[128];
+    snprintf(msg, sizeof(msg), "Vous observez la partie %d de %s vs %s.\n", partie->id, partie->joueur1->pseudo, partie->joueur2->pseudo);
+    envoyer_message(joueur->fd, msg);
+    char ui_obs[1024];
+    afficher_interface_jeu(ui_obs, sizeof(ui_obs),
+                           partie->jeu.board,
+                           partie->jeu.score,
+                           partie->jeu.current_player,
+                           -1, // -1 pour observateur voir Awale.c
+                           partie->joueur1->pseudo,
+                           partie->joueur2->pseudo);
+    envoyer_message(joueur->fd, ui_obs);
+}
+//QUITTER OBSERVATION
+void quitter_observation(joueur_t *joueur)
+{
+    pthread_mutex_lock(&mutex_parties);
+    for (int i = 0; i < MAX_NB_PARTIES; i++)
+    {
+        partie_t *partie = &parties[i];
+        if (partie->en_cours)
+        {
+            for (int j = 0; j < MAX_OBSERVATEURS; j++)
+            {
+                if (strcmp(partie->observateurs[j], joueur->pseudo) == 0)
+                {
+                    partie->observateurs[j][0] = '\0'; // retirer l'observateur
+                    pthread_mutex_unlock(&mutex_parties);
+                    envoyer_message(joueur->fd, "Vous avez quitté l'observation de la partie.\n\n");
+                    envoyer_message(joueur->fd, "Commandes disponibles:\n"
+                                        "DECO - Se déconnecter\n"
+                                        "HELP - Afficher cette aide\n"
+                                        "LISTEJ - Lister les joueurs en ligne\n"
+                                        "LISTEP - Lister les parties en cours\n"
+                                        "DEFI <pseudo> - Défier un joueur\n"
+                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                        "OBS <id_partie> - Observer une partie en cours\n"
+                                        "QUITTEROBS - Quitter l'observation d'une partie\n"
+                                        "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                    return;
+                }
+            }
+        }
+    }
+    pthread_mutex_unlock(&mutex_parties);
+    envoyer_message(joueur->fd, "Vous n'observez aucune partie.\n");
+    return;
+}
+
+
 // ----------------- Chat privé
 // message attendu: débutant par "<pseudo> <texte...>" (ex: appel depuis menu: gerer_chat_prive(joueur, buffer+4))
 void gerer_chat_prive(joueur_t *emetteur, char *message)
@@ -739,6 +859,8 @@ void menu(joueur_t *joueur)
                                         "LISTEP - Lister les parties en cours\n"
                                         "DEFI <pseudo> - Défier un joueur\n"
                                         "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                        "OBS <id_partie> - Observer une partie en cours\n"
+                                        "QUITTEROBS - Quitter l'observation d'une partie\n"
                                         "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
         }
         else if (strcmp(commande, "LISTEJ") == 0)
@@ -753,19 +875,7 @@ void menu(joueur_t *joueur)
         {
             gerer_defi(joueur, buffer);
         }
-        else if (strcmp(commande, "MSG") == 0)
-        {
-            // appeler le chat privé en passant la partie après "MSG "
-            // vérifier qu'il y a bien quelque chose après
-            if (len <= 4)
-            {
-                envoyer_message(joueur->fd, "Format: MSG <pseudo> <message>\n");
-            }
-            else
-            {
-                gerer_chat_prive(joueur, buffer + 4);
-            }
-        }
+        
         else if (strcmp(commande, "ACCEPTER") == 0)
         {
             gerer_accepter(joueur);
@@ -784,6 +894,27 @@ void menu(joueur_t *joueur)
             else
             {
                 envoyer_message(joueur->fd, "Format invalide. Utiliser: JOUER <0-5>\n");
+            }
+        }
+        else if (strcmp(commande, "OBS") == 0)
+        {
+            observer_partie(joueur, buffer);
+        }
+        else if (strcmp(commande, "QUITTEROBS") == 0)
+        {
+            quitter_observation(joueur);
+        }
+        else if (strcmp(commande, "MSG") == 0)
+        {
+            // appeler le chat privé en passant la partie après "MSG "
+            // vérifier qu'il y a bien quelque chose après
+            if (len <= 4)
+            {
+                envoyer_message(joueur->fd, "Format: MSG <pseudo> <message>\n");
+            }
+            else
+            {
+                gerer_chat_prive(joueur, buffer + 4);
             }
         }
         else if (strcmp(commande, "SHREK") == 0)
