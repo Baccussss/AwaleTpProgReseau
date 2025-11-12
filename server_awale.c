@@ -9,7 +9,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
-#include <pthread.h>
+#include <pthread.h> 
+//utilisation de threads pour que le server soit pas ralentit par des clients lents
+//chaque client est géré dans un thread séparé de manière independante
 
 #include "awale.h" // Awale + afficher_interface_jeu
 
@@ -42,10 +44,13 @@ typedef struct
 
 // ------------- Initialisation des variables globales
 joueur_t joueurs[MAX_JOUEURS];
-pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;  
+//le mutex permet de limiter l'accès concurrent aux données des joueurs (quand on touche le tableau joueurs sur plusieurs lignes)
+// pour éviter les conflits
+
 partie_t parties[MAX_NB_PARTIES];
 int nb_parties_actives = 0;
-pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER; //mutex aussi pour les parties
 
 // ------------ Prototypes des fonctions
 // Gestion des sockets et des clients
@@ -53,18 +58,18 @@ void *gerer_client(void *arg);
 joueur_t *gerer_connexion(char *pseudo, int socket_client);
 void gerer_deconnexion(joueur_t *joueur);
 int envoyer_message(int sockfd, const char *message);
-joueur_t *trouver_joueur_par_pseudo(const char *pseudo);
+joueur_t *trouver_joueur_par_pseudo(const char *pseudo); //très utile
 
 // Gestion defi d'un joueur par un autre
 void afficher_joueurs_en_ligne(joueur_t *joueur);
-void gerer_defi(joueur_t *joueur, char *buffer);
+void gerer_defi(joueur_t *joueur, char *buffer); //gère la demande de défi
 void gerer_accepter(joueur_t *joueur);
 void gerer_refuser(joueur_t *joueur);
 partie_t *creer_partie(joueur_t *j1, joueur_t *j2);
 
 // Gestion des commandes lors de la partie
 void jouer_coup(joueur_t *joueur, int maison);
-void envoyer_plateau_aux_joueurs(partie_t *partie);
+void envoyer_plateau_aux_joueurs(partie_t *partie); //pq prend pas message : on avait déjà codé l'affichage directement dans Awale.c avant de savoir qu'on passerait par un menu
 void terminer_partie(partie_t *partie);
 
 partie_t *trouver_partie_joueur(joueur_t *joueur);
@@ -162,6 +167,14 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
             {
                 joueur = &joueurs[i];
                 snprintf(joueur->pseudo, sizeof(joueur->pseudo), "%s", pseudo);
+                //on envoie les commandes de menu tout de suite et non pas avec la fonction menu 
+                //car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
+                envoyer_message(joueur->fd, "Commandes disponibles:\n"
+                                        "DECO - Se déconnecter\n"
+                                        "HELP - Afficher cette aide\n"
+                                        "LISTE - Lister les joueurs en ligne\n"
+                                        "DEFI <pseudo> - Défier un joueur\n"
+                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
                 break;
             }
         }
@@ -629,7 +642,7 @@ void menu(joueur_t *joueur)
 }
 
 // ----------------- Main pour initialiser le serveur et accepter les connexions
-// a la suite du main les sockets clients sont gdans des threads séparés
+// a la suite du main les sockets clients sont dans des threads séparés
 // geres par la fonction gerer_client
 int main(int argc, char **argv)
 {
