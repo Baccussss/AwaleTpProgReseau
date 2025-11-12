@@ -167,14 +167,6 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
             {
                 joueur = &joueurs[i];
                 snprintf(joueur->pseudo, sizeof(joueur->pseudo), "%s", pseudo);
-                //on envoie les commandes de menu tout de suite et non pas avec la fonction menu 
-                //car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
-                envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                        "DECO - Se déconnecter\n"
-                                        "HELP - Afficher cette aide\n"
-                                        "LISTE - Lister les joueurs en ligne\n"
-                                        "DEFI <pseudo> - Défier un joueur\n"
-                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
                 break;
             }
         }
@@ -193,6 +185,14 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     joueur->demande_defi_depuis[0] = '\0';
 
     envoyer_message(socket_client, "Connexion réussie!\n");
+    //on envoie les commandes de menu tout de suite et non pas avec la fonction menu 
+                //car sinon menu() l'afficherait à chaque commande ce qui pollurait l'affichage
+                envoyer_message(joueur->fd, "Commandes disponibles:\n"
+                                        "DECO - Se déconnecter\n"
+                                        "HELP - Afficher cette aide\n"
+                                        "LISTE - Lister les joueurs en ligne\n"
+                                        "DEFI <pseudo> - Défier un joueur\n"
+                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n");
     printf("Joueur connecté: %s\n", pseudo);
 
     pthread_mutex_unlock(&mutex_joueurs);
