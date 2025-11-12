@@ -9,7 +9,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
-#include <pthread.h>
+#include <pthread.h> 
+//utilisation de threads pour que le server soit pas ralentit par des clients lents
+//chaque client est géré dans un thread séparé de manière independante
 
 #include "awale.h" // Awale + afficher_interface_jeu
 
@@ -42,10 +44,13 @@ typedef struct
 
 // ------------- Initialisation des variables globales
 joueur_t joueurs[MAX_JOUEURS];
-pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_joueurs = PTHREAD_MUTEX_INITIALIZER;  
+//le mutex permet de limiter l'accès concurrent aux données des joueurs (quand on touche le tableau joueurs sur plusieurs lignes)
+// pour éviter les conflits
+
 partie_t parties[MAX_NB_PARTIES];
 int nb_parties_actives = 0;
-pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_parties = PTHREAD_MUTEX_INITIALIZER; //mutex aussi pour les parties
 
 // ------------ Prototypes des fonctions
 //Gestion des sockets et des clients
@@ -507,7 +512,7 @@ void menu(joueur_t *joueur)
 }
 
 // ----------------- Main pour initialiser le serveur et accepter les connexions
-// a la suite du main les sockets clients sont gdans des threads séparés
+// a la suite du main les sockets clients sont dans des threads séparés
 // geres par la fonction gerer_client
 int main(int argc, char **argv)
 {
