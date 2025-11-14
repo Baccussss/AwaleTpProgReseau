@@ -254,16 +254,31 @@ void gerer_deconnexion(joueur_t *joueur)
 
     pthread_mutex_lock(&mutex_joueurs);
     joueur->en_ligne = false;
-    joueur->id_partie = -1;
     // nettoyer les défis en attente provenant de ce joueur chez les autres
     for (int i = 0; i < MAX_JOUEURS; i++)
     {
+        //si defi en attente alerte l'autre joueur
         if (joueurs[i].demande_defi_depuis[0] != '\0' && strcmp(joueurs[i].demande_defi_depuis, joueur->pseudo) == 0)
         {
             joueurs[i].demande_defi_depuis[0] = '\0';
             if (joueurs[i].en_ligne)
             {
                 envoyer_message(joueurs[i].fd, "Le joueur qui vous a défié s'est déconnecté. Défi annulé.\n\n");
+            }
+        }
+        //si en partie termine la partie
+        if (joueurs[i].id_partie != -1)
+        {
+            partie_t *partie = &parties[joueurs[i].id_partie];
+            if (partie->joueur1 == joueur || partie->joueur2 == joueur)
+            {
+                // informer l'autre joueur
+                joueur_t *adversaire = (partie->joueur1 == joueur) ? partie->joueur2 : partie->joueur1;
+                if (adversaire->en_ligne)
+                {
+                    envoyer_message(adversaire->fd, "Votre adversaire s'est déconnecté. La partie est terminée.\n\n");
+                }
+                terminer_partie(partie);
             }
         }
     }
