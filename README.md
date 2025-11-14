@@ -9,7 +9,8 @@ HELP
     Affiche la liste complète des commandes disponibles.
 
 DECO
-    Se déconnecte du serveur. 
+    Se déconnecte du serveur.
+    Si nécéssaire: Met fin au match en cours et/ou Retire la demande de match 
 
 LISTEJ
     Affiche tous les joueurs actuellement en ligne,
