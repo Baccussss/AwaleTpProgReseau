@@ -14,7 +14,7 @@ void awale_init(Awale *g)
 
 static int absolute_index(int player, int house)
 {
-    // player 0 houses 0..5 map to 0..5; player1 houses 0..5 map to 6..11
+    // maisons du joueur 0 0..5 -> indices 0..5 ; joueur 1 0..5 -> indices 6..11
     return (player == 0) ? house : (HOUSES_PER_SIDE + house);
 }
 
@@ -51,8 +51,8 @@ bool awale_is_game_over(const Awale *g)
 {
     int total = g->score[0] + g->score[1];
     if (total >= 48)
-        return true; // all seeds captured
-    // Or if one side has no seeds at start of turn -> game may end
+        return true; // toutes les graines capturées
+    // Ou si un côté n'a plus de graines au début du tour -> la partie peut se terminer
     int sum0 = 0, sum1 = 0;
     for (int i = 0; i < HOUSES_PER_SIDE; ++i)
     {
@@ -64,7 +64,7 @@ bool awale_is_game_over(const Awale *g)
     return false;
 }
 
-// sowing and capture rules simplified: sow counter-clockwise skipping starting house, capture when last seed lands in opponent house with 2 or 3 seeds (after landing), and chain captures backwards.
+// Règles simplifiées de semis et de capture : semer dans le sens anti-horaire en sautant la maison de départ, capturer quand la dernière graine atterrit dans une maison adverse contenant 2 ou 3 graines (après l'atterrissage), et enchaîner les captures en remontant.
 
 bool awale_move(Awale *g, int house_index)
 {
@@ -81,14 +81,14 @@ bool awale_move(Awale *g, int house_index)
     {
         pos = (pos + 1) % (HOUSES_PER_SIDE * 2);
         if (pos == start)
-            continue; // skip originating house
+            continue; // sauter la maison d'origine
         g->board[pos] += 1;
         seeds--;
     }
 
-    // capture phase
+    // phase de capture
     int captured = 0;
-    // if last landed in opponent side
+    // si la dernière graine atterrit dans le camp adverse
     int opponent_offset = (g->current_player == 0) ? HOUSES_PER_SIDE : 0;
     while (pos >= opponent_offset && pos < opponent_offset + HOUSES_PER_SIDE)
     {
@@ -103,7 +103,7 @@ bool awale_move(Awale *g, int house_index)
     }
     g->score[g->current_player] += captured;
 
-    // next player's turn only if move wasn't starve opponent? For simplicity, always switch.
+    // passer au joueur suivant
     g->current_player = 1 - g->current_player;
     return true;
 }
@@ -127,7 +127,7 @@ void afficher_interface_jeu(char *out, size_t out_sz,
     }
     else
     {
-        for (int i = 0; i < 6; ++i)// POV joueur 2
+        for (int i = 0; i < 6; ++i) // POV joueur 2
         {
             bottom[i] = board[6 + i]; // 6..11
             top[i] = board[5 - i];    // 5..0
