@@ -1,0 +1,9 @@
+*.o
+socket_client
+socket_server
+socketclient
+socketserver
+server_awale
+client_awale
+test
+awale
