@@ -82,13 +82,12 @@ partie_t *trouver_partie_joueur(joueur_t *joueur);
 void afficher_parties_en_cours(joueur_t *joueur);
 void observer_partie(joueur_t *joueur, char *buffer);
 void quitter_observation(joueur_t *joueur);
-
 void menu(joueur_t *joueur);
 
-// Déclaration pour le chat privé (déclaration)
+// Gestion du chat
 void gerer_chat_prive(joueur_t *emetteur, char *message);
 
-// Déclaration pour la commande pour écrire la bio
+// Gestion de la bio
 void gerer_bio(joueur_t *joueur, char *buffer);
 
 // Déclaration pour consulter les infos d'un joueur
