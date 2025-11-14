@@ -739,12 +739,38 @@ void observer_partie(joueur_t *joueur, char *buffer)
     }
 
     pthread_mutex_lock(&mutex_parties); // on fait des modif sur les parties donc on lock encore
+    //check si la partie existe et est en cours
     if (id_partie < 0 || id_partie >= MAX_NB_PARTIES || !parties[id_partie].en_cours)
     {
         pthread_mutex_unlock(&mutex_parties);
         envoyer_message(joueur->fd, "Partie non trouvée.\n");
         return;
     }
+    //check si la partie est privée et si oui alors est que le futur observateur est un ami d'un des joueurs
+    if (parties[id_partie].est_privee)
+    {
+        bool est_ami = false;
+        pthread_mutex_lock(&mutex_joueurs); //on va faire une recherche sur la liste d'amis donc on lock les joueurs
+        for (int i = 0; i < MAX_AMIS; i++)
+        {
+            if (strcmp(parties[id_partie].joueur1->amis[i], joueur->pseudo) == 0 ||
+                strcmp(parties[id_partie].joueur2->amis[i], joueur->pseudo) == 0)
+            {
+                est_ami = true;
+                break;
+            }
+        }
+        pthread_mutex_unlock(&mutex_joueurs);
+        if (!est_ami)
+        {
+            pthread_mutex_unlock(&mutex_parties);
+            envoyer_message(joueur->fd, "Cette partie est privée. Vous ne pouvez pas l'observer.\n"
+                            "Demandez à un des joueurs de vous ajouter en ami pour observer.\n"
+                            "Utiliser la commande MSG <pseudo> pour discuter\n");
+            return;
+        }
+    }
+
 
     partie_t *partie = &parties[id_partie];
     // vérifier s'il y a de la place pour un observateur
