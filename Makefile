@@ -1,33 +1,33 @@
 CC = gcc
 CFLAGS = -std=c11 -Wall -Wextra -O2
 
-# Executables to build
-TARGETS = awale server_awale client_awale
+# Executables à builder
+TARGETS =  server_awale client_awale
 
-# Object files (built from corresponding .c files)
+
 OBJS = awale.o server_awale.o client_awale.o main.o
 
 all: $(TARGETS)
 	@rm -f $(OBJS) # delete .o files to not create clutter
 
-# awale (local terminal game) needs main.o + awale.o
+# Le jeu awale 
 awale: main.o awale.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-# server needs server_awale.o + awale.o
+# Le serveur
 server_awale: server_awale.o awale.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-# client is standalone
+# Le client 
 client_awale: client_awale.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-# Generic rule to compile .c -> .o
+# La compilation ! 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 
-
+#Pour nettoyer avec make clean 
 clean:
 	rm -f $(OBJS) $(TARGETS)
 

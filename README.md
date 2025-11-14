@@ -3,8 +3,6 @@ Pour jouer:
 Faire un make
 Lancer un ./server_awale <n°Port> et deux ./client_awale <IP server> <n°Port>
 
-le ./awale crée est une relique 
-
 ## Liste des commandes 
 
 HELP
@@ -72,7 +70,7 @@ SHREK <pseudo>
 
 Dans ce projet, l’IA a été utilisée comme aide à la conception et à la relecture du code, en particulier pour la création du jeu awale, gestion concurrente et la manipulation des chaînes de caractères. 
 
-Nous voulions passer principalement notre temps sur la partie réseau du projet. L'IA nous a aidé à aller un peu plus vite sur l'algorithme du jeu d'Awale
+Nous voulions passer principalement notre temps sur la partie réseau du projet. L'IA nous a aidé à aller un peu plus vite sur l'algorithme du jeu d'Awale.
 
 Elle a suggéré l’utilisation de pthread_mutex_t pour protéger les tableaux globaux joueurs et parties, ainsi que le compteur nb_parties_actives, afin d’éviter les accès concurrents et les conditions de course lors des connexions, des défis et de la création/fin de partie. 
 
