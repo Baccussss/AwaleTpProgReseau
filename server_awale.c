@@ -35,6 +35,7 @@ typedef struct
     bool en_ligne;
     int id_partie;                            // -1 si pas en partie
     char demande_defi_depuis[MAX_PSEUDO_LEN]; // pseudo de qui a défié ce joueur (vide si aucun)
+    bool demande_defi_est_privee;            // si le défi est pour une partie privée
 } joueur_t;
 // Structure représentant une partie
 typedef struct
@@ -44,6 +45,7 @@ typedef struct
     joueur_t *joueur1;
     joueur_t *joueur2;
     char observateurs[MAX_OBSERVATEURS][MAX_PSEUDO_LEN];
+    bool est_privee;
     bool en_cours;
 } partie_t;
 
@@ -70,7 +72,8 @@ void afficher_joueurs_en_ligne(joueur_t *joueur);
 void gerer_defi(joueur_t *joueur, char *buffer); // gère la demande de défi
 void gerer_accepter(joueur_t *joueur);
 void gerer_refuser(joueur_t *joueur);
-partie_t *creer_partie(joueur_t *j1, joueur_t *j2);
+partie_t *creer_partie(joueur_t *j1, joueur_t *j2, bool est_privee);
+//partie privee
 
 // Gestion des commandes lors de la partie
 void jouer_coup(joueur_t *joueur, int maison);
@@ -96,7 +99,7 @@ void gerer_info(joueur_t *joueur, char *buffer);
 
 // Gestion des amis
 void gerer_ajouter_ami(joueur_t *joueur, char *buffer);
-void gerer_consulter_ami(joueur_t *joueur, char *buffer);
+void gerer_consulter_ami(joueur_t *joueur);
 
 //-------------- Partie initialisation du serveur et gestion des sockets
 // Piqué sur les exemples du TP1
@@ -129,6 +132,11 @@ int envoyer_message(int sockfd, const char *message)
 // Lecture d'une ligne terminée par '\n'
 static int recv_line(int fd, char *buf, size_t maxlen)
 {
+    /*
+    Récupère une ligne depuis le socket fd, la met dans buf,
+    si detection du \n ou ligne trop longue alors met le \0 de fin de ligne
+    et retourne le nombre de caractères lus (sans le \0).
+    */
     size_t i = 0;
     while (i + 1 < maxlen)
     {
@@ -221,7 +229,10 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
                                 "HELP - Afficher cette aide\n"
                                 "LISTEJ - Lister les joueurs en ligne\n"
                                 "LISTEP - Lister les parties en cours\n"
-                                "DEFI <pseudo> - Défier un joueur\n"
+                                "DEFIPU <pseudo> - Défier un joueur sur une partie publique\n"
+                                "DEFIPR <pseudo> - Défier un joueur sur une partie privée\n"
+                                "ACCEPTER - Accepter un défi en attente\n"
+                                "REFUSER - Refuser un défi en attente\n"
                                 "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
                                 "BIO <texte> - Écrire votre bio\n"
                                 "INFO <pseudo> - Voir pseudo et bio d'un joueur\n"
@@ -345,7 +356,7 @@ void afficher_joueurs_en_ligne(joueur_t *joueur)
 }
 
 // Créer une nouvelle partie
-partie_t *creer_partie(joueur_t *j1, joueur_t *j2)
+partie_t *creer_partie(joueur_t *j1, joueur_t *j2, bool est_privee)
 {
     pthread_mutex_lock(&mutex_parties);
 
@@ -359,6 +370,7 @@ partie_t *creer_partie(joueur_t *j1, joueur_t *j2)
             partie->joueur1 = j1;
             partie->joueur2 = j2;
             awale_init(&partie->jeu);
+            partie->est_privee = est_privee;
             partie->en_cours = true;
 
             j1->id_partie = i;
@@ -372,12 +384,14 @@ partie_t *creer_partie(joueur_t *j1, joueur_t *j2)
     pthread_mutex_unlock(&mutex_parties);
     return partie;
 }
-// Gérer un défi
-void gerer_defi(joueur_t *joueur, char *buffer)
+
+
+// Gerer defi publique
+void gerer_defi_publique(joueur_t *joueur, char *buffer)
 {
     char pseudo_adversaire[MAX_PSEUDO_LEN];
 
-    if (sscanf(buffer, "DEFI %s", pseudo_adversaire) != 1)
+    if (sscanf(buffer, "DEFIPU %s", pseudo_adversaire) != 1)
     {
         envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n");
         return;
@@ -414,15 +428,70 @@ void gerer_defi(joueur_t *joueur, char *buffer)
 
     // enregistrer le défi en attente
     snprintf(adversaire->demande_defi_depuis, sizeof(adversaire->demande_defi_depuis), "%s", joueur->pseudo);
+    adversaire->demande_defi_est_privee = false;
     pthread_mutex_unlock(&mutex_joueurs);
 
     char msg[256];
     snprintf(msg, sizeof(msg), "Demande de défi envoyée à %s.\n", adversaire->pseudo);
     envoyer_message(joueur->fd, msg);
 
-    snprintf(msg, sizeof(msg), "Vous avez reçu un défi de %s. Tapez ACCEPTER ou REFUSER.\n", joueur->pseudo);
+    snprintf(msg, sizeof(msg), "Vous avez reçu un défi publique de %s. Tapez ACCEPTER ou REFUSER.\n", joueur->pseudo);
     envoyer_message(adversaire->fd, msg);
 }
+
+// Gerer defi prive (pour facilite le code j'ai copie colle notre fonction de defi publique et modifié juste ce qu'il faut, c'etait un peu le rush)
+void gerer_defi_prive(joueur_t *joueur, char *buffer)
+{
+    char pseudo_adversaire[MAX_PSEUDO_LEN];
+
+    if (sscanf(buffer, "DEFIPR %s", pseudo_adversaire) != 1)
+    {
+        envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n");
+        return;
+    }
+
+    if (joueur->id_partie != -1)
+    {
+        envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n");
+        return;
+    }
+
+    joueur_t *adversaire = trouver_joueur_par_pseudo(pseudo_adversaire);
+    if (!adversaire || !adversaire->en_ligne)
+    {
+        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n");
+        return;
+    }
+
+    if (adversaire->id_partie != -1)
+    {
+        envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n");
+        return;
+    }
+
+    // Demander l'acceptation au joueur adverse (simple mécanisme de pending)
+    pthread_mutex_lock(&mutex_joueurs);
+    if (adversaire->demande_defi_depuis[0] != '\0')
+    {
+        // Quelqu'un d'autre a déjà défié cet adversaire
+        pthread_mutex_unlock(&mutex_joueurs);
+        envoyer_message(joueur->fd, "Ce joueur a déjà un défi en attente.\n");
+        return;
+    }
+
+    // enregistrer le défi en attente
+    snprintf(adversaire->demande_defi_depuis, sizeof(adversaire->demande_defi_depuis), "%s", joueur->pseudo);
+    adversaire->demande_defi_est_privee = true;
+    pthread_mutex_unlock(&mutex_joueurs);
+
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Demande de défi privé envoyée à %s.\n", adversaire->pseudo);
+    envoyer_message(joueur->fd, msg);
+
+    snprintf(msg, sizeof(msg), "Vous avez reçu un défi privé de %s. Tapez ACCEPTER ou REFUSER.\n", joueur->pseudo);
+    envoyer_message(adversaire->fd, msg);
+}
+
 
 // Accepter un défi en attente
 void gerer_accepter(joueur_t *joueur)
@@ -459,7 +528,8 @@ void gerer_accepter(joueur_t *joueur)
     pthread_mutex_unlock(&mutex_joueurs);
 
     // Créer la partie
-    partie_t *partie = creer_partie(challenger, joueur);
+    partie_t *partie = creer_partie(challenger, joueur, joueur->demande_defi_est_privee); // partie publique
+
     if (!partie)
     {
         envoyer_message(challenger->fd, "Impossible de créer la partie (serveur plein).\n");
@@ -730,15 +800,22 @@ void quitter_observation(joueur_t *joueur)
                     pthread_mutex_unlock(&mutex_parties);
                     envoyer_message(joueur->fd, "Vous avez quitté l'observation de la partie.\n\n");
                     envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                                "DECO - Se déconnecter\n"
-                                                "HELP - Afficher cette aide\n"
-                                                "LISTEJ - Lister les joueurs en ligne\n"
-                                                "LISTEP - Lister les parties en cours\n"
-                                                "DEFI <pseudo> - Défier un joueur\n"
-                                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                                "OBSERVER <id_partie> - Observer une partie en cours\n"
-                                                "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                "DECO - Se déconnecter\n"
+                                "HELP - Afficher cette aide\n"
+                                "LISTEJ - Lister les joueurs en ligne\n"
+                                "LISTEP - Lister les parties en cours\n"
+                                "DEFIPU <pseudo> - Défier un joueur sur une partie publique\n"
+                                "DEFIPR <pseudo> - Défier un joueur sur une partie privée\n"
+                                "ACCEPTER - Accepter un défi en attente\n"
+                                "REFUSER - Refuser un défi en attente\n"
+                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                "BIO <texte> - Écrire votre bio\n"
+                                "INFO <pseudo> - Voir pseudo et bio d'un joueur\n"
+                                "AJOUTERAMI <pseudo> - Ajouter <pseudo> à votre liste d'amis\n"
+                                "CONSULTERAMI - Afficher votre liste d'amis\n"
+                                "OBSERVER <id_partie> - Observer une partie en cours\n"
+                                "QUITTEROBS - Quitter l'observation d'une partie\n"
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
                     return;
                 }
             }
@@ -897,9 +974,8 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
         return;
     }
 
-    // ajouter
-    strncpy(joueur->amis[joueur->nb_amis], target, MAX_PSEUDO_LEN - 1);
-    joueur->amis[joueur->nb_amis][MAX_PSEUDO_LEN - 1] = '\0';
+    // on l'ajoute enfin apres toutes les petites verifs
+    snprintf(joueur->amis[joueur->nb_amis], MAX_PSEUDO_LEN, "%s", target);
     joueur->nb_amis++;
 
     pthread_mutex_unlock(&mutex_joueurs);
@@ -911,7 +987,7 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
 
 // ----------------- Gérer la consultation de la liste d'amis
 // Affiche la liste d'amis du joueur avec leur statut en ligne/hors-ligne
-void gerer_consulter_ami(joueur_t *joueur, char *buffer)
+void gerer_consulter_ami(joueur_t *joueur)
 {
     pthread_mutex_lock(&mutex_joueurs);
     if (joueur->nb_amis == 0)
@@ -1014,15 +1090,22 @@ void menu(joueur_t *joueur)
         else if (strcmp(commande, "HELP") == 0)
         {
             envoyer_message(joueur->fd, "Commandes disponibles:\n"
-                                        "DECO - Se déconnecter\n"
-                                        "HELP - Afficher cette aide\n"
-                                        "LISTEJ - Lister les joueurs en ligne\n"
-                                        "LISTEP - Lister les parties en cours\n"
-                                        "DEFI <pseudo> - Défier un joueur\n"
-                                        "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
-                                        "OBSERVER <id_partie> - Observer une partie en cours\n"
-                                        "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                        "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                "DECO - Se déconnecter\n"
+                                "HELP - Afficher cette aide\n"
+                                "LISTEJ - Lister les joueurs en ligne\n"
+                                "LISTEP - Lister les parties en cours\n"
+                                "DEFIPU <pseudo> - Défier un joueur sur une partie publique\n"
+                                "DEFIPR <pseudo> - Défier un joueur sur une partie privée\n"
+                                "ACCEPTER - Accepter un défi en attente\n"
+                                "REFUSER - Refuser un défi en attente\n"
+                                "JOUER <0-5> - Jouer un coup (lors d'une partie)\n"
+                                "BIO <texte> - Écrire votre bio\n"
+                                "INFO <pseudo> - Voir pseudo et bio d'un joueur\n"
+                                "AJOUTERAMI <pseudo> - Ajouter <pseudo> à votre liste d'amis\n"
+                                "CONSULTERAMI - Afficher votre liste d'amis\n"
+                                "OBSERVER <id_partie> - Observer une partie en cours\n"
+                                "QUITTEROBS - Quitter l'observation d'une partie\n"
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
         }
         else if (strcmp(commande, "LISTEJ") == 0)
         {
@@ -1032,9 +1115,17 @@ void menu(joueur_t *joueur)
         {
             afficher_parties_en_cours(joueur);
         }
-        else if (strcmp(commande, "DEFI") == 0)
+        else if (strcmp(commande, "DEFIPU") == 0)
         {
-            gerer_defi(joueur, buffer);
+            gerer_defi_publique(joueur, buffer);
+        }
+        else if (strcmp(commande, "DEFIPR") == 0)
+        {
+            gerer_defi_prive(joueur, buffer);
+        }
+        else if (strcmp(commande, "ACCEPTER") == 0)
+        {
+            gerer_accepter(joueur);
         }
         else if (strcmp(commande, "REFUSER") == 0)
         {
@@ -1077,11 +1168,7 @@ void menu(joueur_t *joueur)
         }
         else if (strcmp(commande, "CONSULTERAMI") == 0)
         {
-            gerer_consulter_ami(joueur, buffer);
-        }
-        else if (strcmp(commande, "ACCEPTER") == 0)
-        {
-            gerer_accepter(joueur);
+            gerer_consulter_ami(joueur);
         }
         else if (strcmp(commande, "JOUER") == 0)
         {
