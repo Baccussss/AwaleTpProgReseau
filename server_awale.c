@@ -181,7 +181,7 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
     joueur_t *existant = trouver_joueur_par_pseudo(pseudo);
     if (existant != NULL && existant->en_ligne)
     {
-        envoyer_message(socket_client, "Ce pseudo est déjà en ligne!\n");
+        envoyer_message(socket_client, "Ce pseudo est déjà en ligne!\n\n");
         pthread_mutex_unlock(&mutex_joueurs);
         return NULL;
     }
@@ -203,7 +203,7 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
 
     if (joueur == NULL)
     {
-        envoyer_message(socket_client, "Serveur plein!\n");
+        envoyer_message(socket_client, "Serveur plein!\n\n");
         pthread_mutex_unlock(&mutex_joueurs);
         return NULL;
     }
@@ -239,7 +239,7 @@ joueur_t *gerer_connexion(char *pseudo, int socket_client)
                                 "CONSULTERAMI - Afficher votre liste d'amis\n"
                                 "OBSERVER <id_partie> - Observer une partie en cours\n"
                                 "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n\n");
     printf("Joueur connecté: %s\n", pseudo);
 
     pthread_mutex_unlock(&mutex_joueurs);
@@ -263,7 +263,7 @@ void gerer_deconnexion(joueur_t *joueur)
             joueurs[i].demande_defi_depuis[0] = '\0';
             if (joueurs[i].en_ligne)
             {
-                envoyer_message(joueurs[i].fd, "Le joueur qui vous a défié s'est déconnecté. Défi annulé.\n");
+                envoyer_message(joueurs[i].fd, "Le joueur qui vous a défié s'est déconnecté. Défi annulé.\n\n");
             }
         }
     }
@@ -285,7 +285,7 @@ void *gerer_client(void *arg)
     // Boucle de connexion
     while (joueur == NULL)
     {
-        envoyer_message(socket_client, "Entrez votre pseudo (max 31 caractères):\n");
+        envoyer_message(socket_client, "Entrez votre pseudo (max 31 caractères):\n\n");
 
         int n = recv_line(socket_client, buffer, sizeof(buffer));
         if (n <= 0)
@@ -303,7 +303,7 @@ void *gerer_client(void *arg)
 
         if (len == 0)
         {
-            envoyer_message(socket_client, "Pseudo vide! Réessayez.\n");
+            envoyer_message(socket_client, "Pseudo vide! Réessayez.\n\n");
             continue;
         }
 
@@ -321,7 +321,7 @@ void afficher_joueurs_en_ligne(joueur_t *joueur)
 {
     pthread_mutex_lock(&mutex_joueurs);
 
-    char message[TAILLE_BUFFER] = "Joueurs en ligne:\n";
+    char message[TAILLE_BUFFER] = "Joueurs en ligne:\n\n";
     int count = 0;
 
     for (int i = 0; i < MAX_JOUEURS; i++)
@@ -347,7 +347,7 @@ void afficher_joueurs_en_ligne(joueur_t *joueur)
 
     if (count == 0)
     {
-        strcat(message, "  Aucun autre joueur en ligne.\n");
+        strcat(message, "  Aucun autre joueur en ligne.\n\n");
     }
 
     envoyer_message(joueur->fd, message);
@@ -392,26 +392,26 @@ void gerer_defi_publique(joueur_t *joueur, char *buffer)
 
     if (sscanf(buffer, "DEFIPU %s", pseudo_adversaire) != 1)
     {
-        envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n");
+        envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n\n");
         return;
     }
 
     if (joueur->id_partie != -1)
     {
-        envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n");
+        envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n\n");
         return;
     }
 
     joueur_t *adversaire = trouver_joueur_par_pseudo(pseudo_adversaire);
     if (!adversaire || !adversaire->en_ligne)
     {
-        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n");
+        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n\n");
         return;
     }
 
     if (adversaire->id_partie != -1)
     {
-        envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n");
+        envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n\n");
         return;
     }
 
@@ -421,7 +421,7 @@ void gerer_defi_publique(joueur_t *joueur, char *buffer)
     {
         // Quelqu'un d'autre a déjà défié cet adversaire
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Ce joueur a déjà un défi en attente.\n");
+        envoyer_message(joueur->fd, "Ce joueur a déjà un défi en attente.\n\n");
         return;
     }
 
@@ -431,10 +431,10 @@ void gerer_defi_publique(joueur_t *joueur, char *buffer)
     pthread_mutex_unlock(&mutex_joueurs);
 
     char msg[256];
-    snprintf(msg, sizeof(msg), "Demande de défi envoyée à %s.\n", adversaire->pseudo);
+    snprintf(msg, sizeof(msg), "Demande de défi envoyée à %s.\n\n", adversaire->pseudo);
     envoyer_message(joueur->fd, msg);
 
-    snprintf(msg, sizeof(msg), "Vous avez reçu un défi publique de %s. Tapez ACCEPTER ou REFUSER.\n", joueur->pseudo);
+    snprintf(msg, sizeof(msg), "Vous avez reçu un défi publique de %s. Tapez ACCEPTER ou REFUSER.\n\n", joueur->pseudo);
     envoyer_message(adversaire->fd, msg);
 }
 
@@ -445,26 +445,26 @@ void gerer_defi_prive(joueur_t *joueur, char *buffer)
 
     if (sscanf(buffer, "DEFIPR %s", pseudo_adversaire) != 1)
     {
-        envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n");
+        envoyer_message(joueur->fd, "Format invalide. Utiliser: DEFI <pseudo>\n\n");
         return;
     }
 
     if (joueur->id_partie != -1)
     {
-        envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n");
+        envoyer_message(joueur->fd, "Vous êtes déjà dans une partie!\n\n");
         return;
     }
 
     joueur_t *adversaire = trouver_joueur_par_pseudo(pseudo_adversaire);
     if (!adversaire || !adversaire->en_ligne)
     {
-        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n");
+        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne.\n\n");
         return;
     }
 
     if (adversaire->id_partie != -1)
     {
-        envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n");
+        envoyer_message(joueur->fd, "Ce joueur est déjà en partie.\n\n");
         return;
     }
 
@@ -474,7 +474,7 @@ void gerer_defi_prive(joueur_t *joueur, char *buffer)
     {
         // Quelqu'un d'autre a déjà défié cet adversaire
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Ce joueur a déjà un défi en attente.\n");
+        envoyer_message(joueur->fd, "Ce joueur a déjà un défi en attente.\n\n");
         return;
     }
 
@@ -484,10 +484,10 @@ void gerer_defi_prive(joueur_t *joueur, char *buffer)
     pthread_mutex_unlock(&mutex_joueurs);
 
     char msg[256];
-    snprintf(msg, sizeof(msg), "Demande de défi privé envoyée à %s.\n", adversaire->pseudo);
+    snprintf(msg, sizeof(msg), "Demande de défi privé envoyée à %s.\n\n", adversaire->pseudo);
     envoyer_message(joueur->fd, msg);
 
-    snprintf(msg, sizeof(msg), "Vous avez reçu un défi privé de %s. Tapez ACCEPTER ou REFUSER.\n", joueur->pseudo);
+    snprintf(msg, sizeof(msg), "Vous avez reçu un défi privé de %s. Tapez ACCEPTER ou REFUSER.\n\n", joueur->pseudo);
     envoyer_message(adversaire->fd, msg);
 }
 
@@ -499,7 +499,7 @@ void gerer_accepter(joueur_t *joueur)
     if (joueur->demande_defi_depuis[0] == '\0')
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Aucun défi en attente.\n");
+        envoyer_message(joueur->fd, "Aucun défi en attente.\n\n");
         return;
     }
 
@@ -509,7 +509,7 @@ void gerer_accepter(joueur_t *joueur)
     {
         joueur->demande_defi_depuis[0] = '\0';
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Le joueur qui vous a défié n'est plus en ligne.\n");
+        envoyer_message(joueur->fd, "Le joueur qui vous a défié n'est plus en ligne.\n\n");
         return;
     }
 
@@ -518,7 +518,7 @@ void gerer_accepter(joueur_t *joueur)
     {
         joueur->demande_defi_depuis[0] = '\0';
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Impossible de démarrer la partie (un joueur est déjà en partie).\n");
+        envoyer_message(joueur->fd, "Impossible de démarrer la partie (un joueur est déjà en partie).\n\n");
         return;
     }
 
@@ -531,15 +531,15 @@ void gerer_accepter(joueur_t *joueur)
 
     if (!partie)
     {
-        envoyer_message(challenger->fd, "Impossible de créer la partie (serveur plein).\n");
-        envoyer_message(joueur->fd, "Impossible de créer la partie (serveur plein).\n");
+        envoyer_message(challenger->fd, "Impossible de créer la partie (serveur plein).\n\n");
+        envoyer_message(joueur->fd, "Impossible de créer la partie (serveur plein).\n\n");
         return;
     }
 
     char buf[256];
-    snprintf(buf, sizeof(buf), "Partie créée avec %s!\n", joueur->pseudo);
+    snprintf(buf, sizeof(buf), "Partie créée avec %s!\n\n", joueur->pseudo);
     envoyer_message(challenger->fd, buf);
-    snprintf(buf, sizeof(buf), "Partie créée avec %s!\n", challenger->pseudo);
+    snprintf(buf, sizeof(buf), "Partie créée avec %s!\n\n", challenger->pseudo);
     envoyer_message(joueur->fd, buf);
 
     // Envoyer le plateau initial
@@ -553,7 +553,7 @@ void gerer_refuser(joueur_t *joueur)
     if (joueur->demande_defi_depuis[0] == '\0')
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Aucun défi en attente.\n");
+        envoyer_message(joueur->fd, "Aucun défi en attente.\n\n");
         return;
     }
 
@@ -561,13 +561,13 @@ void gerer_refuser(joueur_t *joueur)
     if (challenger && challenger->en_ligne)
     {
         char buf[256];
-        snprintf(buf, sizeof(buf), "Votre défi a été refusé par %s.\n", joueur->pseudo);
+        snprintf(buf, sizeof(buf), "Votre défi a été refusé par %s.\n\n", joueur->pseudo);
         envoyer_message(challenger->fd, buf);
     }
 
     joueur->demande_defi_depuis[0] = '\0';
     pthread_mutex_unlock(&mutex_joueurs);
-    envoyer_message(joueur->fd, "Vous avez refusé le défi.\n");
+    envoyer_message(joueur->fd, "Vous avez refusé le défi.\n\n");
 }
 
 // Envoyer le plateau aux deux joueurs
@@ -620,7 +620,7 @@ void jouer_coup(joueur_t *joueur, int maison)
     partie_t *partie = trouver_partie_joueur(joueur);
     if (!partie)
     {
-        envoyer_message(joueur->fd, "Vous n'êtes pas dans une partie!\n");
+        envoyer_message(joueur->fd, "Vous n'êtes pas dans une partie!\n\n");
         return;
     }
 
@@ -628,14 +628,14 @@ void jouer_coup(joueur_t *joueur, int maison)
     int joueur_num = (partie->joueur1 == joueur) ? 0 : 1;
     if (partie->jeu.current_player != joueur_num)
     {
-        envoyer_message(joueur->fd, "Ce n'est pas votre tour!\n");
+        envoyer_message(joueur->fd, "Ce n'est pas votre tour!\n\n");
         return;
     }
 
     // Tenter le coup
     if (!awale_move(&partie->jeu, maison))
     {
-        envoyer_message(joueur->fd, "Coup invalide (maison vide ou règle non respectée). Réessayez.\n");
+        envoyer_message(joueur->fd, "Coup invalide (maison vide ou règle non respectée). Réessayez.\n\n");
         envoyer_plateau_aux_joueurs(partie);
         return;
     }
@@ -663,7 +663,7 @@ void jouer_coup(joueur_t *joueur, int maison)
         }
 
         snprintf(endmsg, sizeof(endmsg),
-                 "Partie terminée!\nScores: %s=%d, %s=%d\nRésultat: %s gagne!\n",
+                 "Partie terminée!\nScores: %s=%d, %s=%d\nRésultat: %s gagne!\n\n",
                  partie->joueur1->pseudo, partie->jeu.score[0],
                  partie->joueur2->pseudo, partie->jeu.score[1],
                  resultmsg);
@@ -711,7 +711,7 @@ void afficher_parties_en_cours(joueur_t *joueur)
         if (parties[i].en_cours)
         {
             char buf[128]; // on embellit un peu l'affichage en précisant qui contre qui
-            snprintf(buf, sizeof(buf), "  - Partie %d: %s vs %s\n",
+            snprintf(buf, sizeof(buf), "  - Partie %d: %s vs %s\n\n",
                      parties[i].id,
                      parties[i].joueur1->pseudo,
                      parties[i].joueur2->pseudo);
@@ -722,7 +722,7 @@ void afficher_parties_en_cours(joueur_t *joueur)
 
     if (nb == 0)
     {
-        strcat(message, "  Aucune partie en cours.\n");
+        strcat(message, "  Aucune partie en cours.\n\n");
     }
     envoyer_message(joueur->fd, message);
     pthread_mutex_unlock(&mutex_parties);
@@ -734,7 +734,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
     int id_partie;
     if (sscanf(buffer, "OBSERVER %d", &id_partie) != 1)
     {
-        envoyer_message(joueur->fd, "Format invalide. Utiliser: OBSERVER <id_partie>\n");
+        envoyer_message(joueur->fd, "Format invalide. Utiliser: OBSERVER <id_partie>\n\n");
         return;
     }
 
@@ -766,7 +766,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
             pthread_mutex_unlock(&mutex_parties);
             envoyer_message(joueur->fd, "Cette partie est privée. Vous ne pouvez pas l'observer.\n"
                             "Demandez à un des joueurs de vous ajouter en ami pour observer.\n"
-                            "Utiliser la commande MSG <pseudo> pour discuter\n");
+                            "Utiliser la commande MSG <pseudo> pour discuter\n\n");
             return;
         }
     }
@@ -787,7 +787,7 @@ void observer_partie(joueur_t *joueur, char *buffer)
     if (obs_index == -1)
     {
         pthread_mutex_unlock(&mutex_parties);
-        envoyer_message(joueur->fd, "Nombre maximum d'observateurs atteint pour cette partie.\n");
+        envoyer_message(joueur->fd, "Nombre maximum d'observateurs atteint pour cette partie.\n\n");
         return;
     }
 
@@ -840,14 +840,14 @@ void quitter_observation(joueur_t *joueur)
                                 "CONSULTERAMI - Afficher votre liste d'amis\n"
                                 "OBSERVER <id_partie> - Observer une partie en cours\n"
                                 "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n\n");
                     return;
                 }
             }
         }
     }
     pthread_mutex_unlock(&mutex_parties);
-    envoyer_message(joueur->fd, "Vous n'observez aucune partie.\n");
+    envoyer_message(joueur->fd, "Vous n'observez aucune partie.\n\n");
     return;
 }
 
@@ -860,7 +860,7 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
     // extraire le pseudo cible
     if (sscanf(message, "%31s", pseudo_cible) != 1)
     {
-        envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n");
+        envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n\n");
         return;
     }
 
@@ -868,7 +868,7 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
     char *pos = strstr(message, pseudo_cible);
     if (!pos)
     {
-        envoyer_message(emetteur->fd, "Format invalide.\n");
+        envoyer_message(emetteur->fd, "Format invalide.\n\n");
         return;
     }
     pos += strlen(pseudo_cible);
@@ -876,7 +876,7 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
         pos++;
     if (*pos == '\0')
     {
-        envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n");
+        envoyer_message(emetteur->fd, "Format: MSG <pseudo> <message>\n\n");
         return;
     }
 
@@ -885,7 +885,7 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
     if (!dest || !dest->en_ligne || dest->fd == -1)
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(emetteur->fd, "Joueur non trouvé ou hors ligne.\n");
+        envoyer_message(emetteur->fd, "Joueur non trouvé ou hors ligne.\n\n");
         return;
     }
 
@@ -896,7 +896,7 @@ void gerer_chat_prive(joueur_t *emetteur, char *message)
     pthread_mutex_unlock(&mutex_joueurs);
 
     // accusé au sender
-    envoyer_message(emetteur->fd, "Message privé envoyé.\n");
+    envoyer_message(emetteur->fd, "Message privé envoyé.\n\n");
 }
 
 // ----------------- Gérer la bio d'un joueur
@@ -911,7 +911,7 @@ void gerer_bio(joueur_t *joueur, char *buffer)
 
     if (*texte == '\0')
     {
-        envoyer_message(joueur->fd, "Format: BIO <texte>\n");
+        envoyer_message(joueur->fd, "Format: BIO <texte>\n\n");
         return;
     }
 
@@ -929,7 +929,7 @@ void gerer_info(joueur_t *joueur, char *buffer)
     char pseudo_cible[MAX_PSEUDO_LEN];
     if (sscanf(buffer, "INFO %31s", pseudo_cible) != 1)
     {
-        envoyer_message(joueur->fd, "Format: INFO <pseudo>\n");
+        envoyer_message(joueur->fd, "Format: INFO <pseudo>\n\n");
         return;
     }
 
@@ -938,7 +938,7 @@ void gerer_info(joueur_t *joueur, char *buffer)
     if (!dest)
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Joueur non trouvé.\n");
+        envoyer_message(joueur->fd, "Joueur non trouvé.\n\n");
         return;
     }
 
@@ -959,14 +959,14 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
     char target[MAX_PSEUDO_LEN];
     if (sscanf(buffer, "AJOUTERAMI %31s", target) != 1)
     {
-        envoyer_message(joueur->fd, "Format: AJOUTERAMI <pseudo>\n");
+        envoyer_message(joueur->fd, "Format: AJOUTERAMI <pseudo>\n\n");
         return;
     }
 
     // ne pas s'ajouter soi-même
     if (strcmp(target, joueur->pseudo) == 0)
     {
-        envoyer_message(joueur->fd, "Vous ne pouvez pas vous ajouter vous-même en ami.\n");
+        envoyer_message(joueur->fd, "Vous ne pouvez pas vous ajouter vous-même en ami.\n\n");
         return;
     }
 
@@ -977,7 +977,7 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
     if (!dest)
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Joueur introuvable.\n");
+        envoyer_message(joueur->fd, "Joueur introuvable.\n\n");
         return;
     }
 
@@ -987,7 +987,7 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
         if (strcmp(joueur->amis[i], target) == 0)
         {
             pthread_mutex_unlock(&mutex_joueurs);
-            envoyer_message(joueur->fd, "Ce joueur est déjà dans votre liste d'amis.\n");
+            envoyer_message(joueur->fd, "Ce joueur est déjà dans votre liste d'amis.\n\n");
             return;
         }
     }
@@ -995,7 +995,7 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
     if (joueur->nb_amis >= MAX_AMIS)
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Votre liste d'amis est pleine.\n");
+        envoyer_message(joueur->fd, "Votre liste d'amis est pleine.\n\n");
         return;
     }
 
@@ -1006,7 +1006,7 @@ void gerer_ajouter_ami(joueur_t *joueur, char *buffer)
     pthread_mutex_unlock(&mutex_joueurs);
 
     char buf[128];
-    snprintf(buf, sizeof(buf), "%s ajouté à votre liste d'amis.\n", target);
+    snprintf(buf, sizeof(buf), "%s ajouté à votre liste d'amis.\n\n", target);
     envoyer_message(joueur->fd, buf);
 }
 
@@ -1018,7 +1018,7 @@ void gerer_consulter_ami(joueur_t *joueur)
     if (joueur->nb_amis == 0)
     {
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Vous n'avez aucun ami dans votre liste.\n");
+        envoyer_message(joueur->fd, "Vous n'avez aucun ami dans votre liste.\n\n");
         return;
     }
 
@@ -1055,7 +1055,7 @@ void shrek(joueur_t *joueur, char *buffer)
                         "   ⠀⠀⠀⠀⠀⠀⣀⣀⣈⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀⠀⠀⠀⠀⠀⠀ \n"
                         "   ⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀ \n"
                         "   ⠀⠀⠀⠀⠀⠀⠀⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀ \n"
-                        "   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠻⠿⠿⠿⠿⠛⠉\n";
+                        "   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠻⠿⠿⠿⠿⠛⠉\n\n";
 
     // Si aucun pseudo fourni, envoyer à soi-même
     if (sscanf(buffer, "SHREK %s", pseudo_destinataire) != 1)
@@ -1073,13 +1073,13 @@ void shrek(joueur_t *joueur, char *buffer)
         // Envoyer au destinataire
         envoyer_message(destinataire->fd, shrek);
         pthread_mutex_unlock(&mutex_joueurs);
-        envoyer_message(joueur->fd, "Shrek envoyé avec succès!\n");
+        envoyer_message(joueur->fd, "Shrek envoyé avec succès!\n\n");
     }
     else
     {
         pthread_mutex_unlock(&mutex_joueurs);
         // Joueur non trouvé ou hors ligne, envoyer à soi-même
-        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne. C'est toi qui prends le shrek:\n");
+        envoyer_message(joueur->fd, "Joueur non trouvé ou hors ligne. C'est toi qui prends le shrek:\n\n");
         envoyer_message(joueur->fd, shrek);
     }
 }
@@ -1130,7 +1130,7 @@ void menu(joueur_t *joueur)
                                 "CONSULTERAMI - Afficher votre liste d'amis\n"
                                 "OBSERVER <id_partie> - Observer une partie en cours\n"
                                 "QUITTEROBS - Quitter l'observation d'une partie\n"
-                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n");
+                                "MSG <pseudo> <message> - Envoyer un message privé à <pseudo>\n\n");
         }
         else if (strcmp(commande, "LISTEJ") == 0)
         {
@@ -1171,7 +1171,7 @@ void menu(joueur_t *joueur)
         {
             if (len <= 5)
             {
-                envoyer_message(joueur->fd, "Format: INFO <pseudo>\n");
+                envoyer_message(joueur->fd, "Format: INFO <pseudo>\n\n");
             }
             else
             {
@@ -1184,7 +1184,7 @@ void menu(joueur_t *joueur)
             char target[MAX_PSEUDO_LEN];
             if (sscanf(buffer, "AJOUTERAMI %31s", target) != 1)
             {
-                envoyer_message(joueur->fd, "Format: AJOUTERAMI <pseudo>\n");
+                envoyer_message(joueur->fd, "Format: AJOUTERAMI <pseudo>\n\n");
             }
             else
             {
@@ -1204,7 +1204,7 @@ void menu(joueur_t *joueur)
             }
             else
             {
-                envoyer_message(joueur->fd, "Format invalide. Utiliser: JOUER <0-5>\n");
+                envoyer_message(joueur->fd, "Format invalide. Utiliser: JOUER <0-5>\n\n");
             }
         }
         else if (strcmp(commande, "OBSERVER") == 0)
@@ -1221,7 +1221,7 @@ void menu(joueur_t *joueur)
             // vérifier qu'il y a bien quelque chose après
             if (len <= 4)
             {
-                envoyer_message(joueur->fd, "Format: MSG <pseudo> <message>\n");
+                envoyer_message(joueur->fd, "Format: MSG <pseudo> <message>\n\n");
             }
             else
             {
@@ -1235,7 +1235,7 @@ void menu(joueur_t *joueur)
 
         else
         {
-            envoyer_message(joueur->fd, "Commande inconnue. Tapez HELP pour l'aide.\n");
+            envoyer_message(joueur->fd, "Commande inconnue. Tapez HELP pour l'aide.\n\n");
         }
 
         memset(buffer, 0, sizeof(buffer));
